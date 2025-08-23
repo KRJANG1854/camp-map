@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
-<title>캠핑장 지도 (초기화 제거·핀치 유지)</title>
+<title>캠핑장 지도 (더블탭 무효 + 요일 버튼 개선)</title>
 <style>
   :root{--bg:#f7f7fb;--fg:#111827;--muted:#6b7280;--accent:#2563eb;--line:#e5e7eb;}
   html, body { height:100%; overscroll-behavior:none; }
@@ -13,7 +13,7 @@
   .topbar{display:flex;gap:.5rem;align-items:center;padding:.5rem .6rem}
   .tab{flex:1;border:1px solid var(--line);background:#fff;border-radius:.7rem;padding:.5rem .9rem;font-weight:700;text-align:center}
   .tab.active{background:var(--accent);color:#fff;border-color:var(--accent)}
-  .status{font-size:.9rem;color:var(--muted);padding-left:.25rem;min-width:130px;text-align:right;flex:0 0 auto}
+  .status{font-size:.9rem;color:var(--muted);padding-left:.25rem;min-width:160px;text-align:right;flex:0 0 auto}
   .wrap{padding:.5rem}
   #stageWrap{height:78vh;background:#fff;border-radius:1rem;box-shadow:0 8px 24px rgba(0,0,0,.06);position:relative;overflow:hidden;touch-action:none;-ms-touch-action:none}
   #inner{position:absolute;left:0;top:0;transform-origin:0 0;touch-action:none;-ms-touch-action:none}
@@ -34,6 +34,8 @@
   .note{font-size:.9rem;color:#6b7280}
   .zoomBar{position:absolute;left:.75rem;bottom:.75rem;display:flex;gap:.4rem;z-index:20}
   .zoomBar button{width:44px;height:44px;border-radius:999px;box-shadow:0 6px 16px rgba(0,0,0,.12)}
+  .wbtn{min-width:2.4rem}
+  .wbtn.active{background:var(--accent);color:#fff;border-color:var(--accent)}
 </style>
 </head>
 <body>
@@ -41,7 +43,7 @@
   <div class="topbar">
     <button class="tab" data-tab="date">날짜</button>
     <button class="tab" data-tab="tools">기능</button>
-    <div class="status" id="modeStatus">일반 모드</div>
+    <div class="status" id="modeStatus">라벨: 월 • 일반 모드</div>
   </div>
 </header>
 
@@ -76,8 +78,11 @@ const $=(s)=>document.querySelector(s);
 const $$=(s)=>Array.from(document.querySelectorAll(s));
 const stage=$("#stageWrap"), inner=$("#inner"), map=$("#map"), drawer=$("#drawer"), drawerContent=$("#drawerContent"), modeStatus=$("#modeStatus"), zoomPct=$("#zoomPct");
 
-function saveLocal(){ localStorage.setItem('camp-noreset-v1', JSON.stringify({state, activeLayer, deleteMode, scale, originX, originY})); }
-function loadLocal(){ const raw=localStorage.getItem('camp-noreset-v1'); if(raw){ try{ const o=JSON.parse(raw); state=o.state||state; activeLayer=o.activeLayer||activeLayer; deleteMode=!!o.deleteMode; scale=o.scale||1; originX=o.originX||0; originY=o.originY||0; }catch(e){} } }
+function saveLocal(){ localStorage.setItem('camp-strongfix-v1', JSON.stringify({state, activeLayer, deleteMode, scale, originX, originY})); }
+function loadLocal(){ const raw=localStorage.getItem('camp-strongfix-v1'); if(raw){ try{ const o=JSON.parse(raw); state=o.state||state; activeLayer=o.activeLayer||activeLayer; deleteMode=!!o.deleteMode; scale=o.scale||1; originX=o.originX||0; originY=o.originY||0; }catch(e){} } }
+
+function labelName(){ return weekdays.find(w=>w.layer===activeLayer).k; }
+function updateStatus(){ modeStatus.textContent = '라벨: ' + labelName() + ' • ' + (deleteMode?'개별삭제 모드':'일반 모드'); }
 
 function pushUndo(){ undoStack.push(JSON.stringify({state})); redoStack.length=0; }
 function restore(json){ const o=JSON.parse(json); state=o.state; renderAll(); }
@@ -98,11 +103,22 @@ function zoomAroundScreenPoint(newScale, mx, my){
 function zoom(delta){ const r=stage.getBoundingClientRect(); zoomAroundScreenPoint(scale + delta, r.left + r.width/2, r.top + r.height/2); }
 $("#zoomIn").onclick=()=>zoom(0.1); $("#zoomOut").onclick=()=>zoom(-0.1);
 
-// ---- Pinch & Pan (no double-tap reset at all) ----
+// ---- Pinch & Pan (no double-tap reset; block double-tap zoom) ----
 const pointers=new Map();
 let panBase=null, pinchBase=null;
+let lastTapTime=0;
 
 function midDist(arr){ const p0=arr[0], p1=arr[1]; return { midX:(p0.x+p1.x)/2, midY:(p0.y+p1.y)/2, d:Math.hypot(p1.x-p0.x,p1.y-p0.y) }; }
+
+// prevent browser double-tap zoom on stage (iOS)
+stage.addEventListener('touchend', (e)=>{
+  const now=Date.now();
+  if(now-lastTapTime<300){ e.preventDefault(); } // block second tap
+  lastTapTime=now;
+}, {passive:false});
+
+// nullify dblclick on stage (desktop)
+stage.addEventListener('dblclick', (e)=>{ e.preventDefault(); e.stopPropagation(); }, {passive:false});
 
 stage.addEventListener('pointerdown', (e)=>{
   stage.setPointerCapture(e.pointerId);
@@ -178,7 +194,7 @@ stage.addEventListener('touchend', (ev)=>{
   if(ev.touches.length===0){ tPanBase=null; tPinchBase=null; saveLocal(); }
 }, {passive:false});
 
-// Core app (labels)
+// -------- Core (markers) --------
 function stageToImageCoords(clientX,clientY){
   const rect=stage.getBoundingClientRect();
   const x=(clientX-rect.left-originX)/scale;
@@ -222,8 +238,12 @@ function savePNG(){
   state.markers.forEach(m=>{const x=m.x*scale,y=m.y*scale;ctx.font='bold '+(m.size*scale)+'px system-ui';ctx.textAlign='center';ctx.textBaseline='middle';ctx.strokeStyle='#fff';ctx.lineWidth=Math.max(2,m.size/6*scale);ctx.strokeText(m.label,x,y);ctx.fillStyle=m.color||'#111827';ctx.fillText(m.label,x,y);});
   const a=document.createElement('a');a.href=c.toDataURL('image/png');a.download='camp-map-'+new Date().toISOString().slice(0,19).replace(/[T:]/g,'-')+'.png';a.click();
 }
-function setDeleteMode(on){deleteMode=!!on;modeStatus.textContent=on?'개별삭제 모드':'일반 모드';const b=$("#btnDelMode");if(b)b.classList.toggle('active',on);domMap.forEach(el=>el.classList.toggle('del',on));saveLocal();}
+function setDeleteMode(on){deleteMode=!!on;updateStatus();const b=$("#btnDelMode");if(b)b.classList.toggle('active',on);domMap.forEach(el=>el.classList.toggle('del',on));saveLocal();}
 
+function renderWeekButtons(){
+  const btns = $$('.wbtn');
+  btns.forEach(b=>b.classList.toggle('active', b.dataset.l===activeLayer));
+}
 function openDrawer(tab){
   const tabs=$$('.tab');tabs.forEach(t=>t.classList.toggle('active',t.dataset.tab===tab));drawer.classList.add('open');
   let html='';
@@ -247,13 +267,26 @@ function openDrawer(tab){
     <button class="small" id="clearBtn">모두 삭제</button>
     <button class="small btn-toggle" id="btnDelMode">개별삭제</button>
   </div>`;
-  html+=`<div class="row note">두 손가락 **핀치=줌**, 한 손가락 **드래그=이동** (초기화 기능 제거)</div>`;
+  html+=`<div class="row note">두 손가락 핀치=줌 / 한 손가락 드래그=이동 • 더블탭 무효화</div>`;
   }
   drawerContent.innerHTML=html;
-  $$('.wbtn').forEach(b=>b.addEventListener('click',()=>{activeLayer=b.dataset.l;}));
+
+  // attach listeners
+  $$('.wbtn').forEach(b=>{
+    const setDay=()=>{
+      activeLayer=b.dataset.l;
+      state.custom=''; // 요일을 누르면 커스텀 라벨 해제 -> 요일이 바로 찍히도록
+      renderWeekButtons(); updateStatus(); saveLocal();
+    };
+    b.addEventListener('click', setDay, {passive:true});
+    b.addEventListener('touchend', (e)=>{ e.preventDefault(); setDay(); }, {passive:false});
+  });
+  renderWeekButtons();
+
   const ci=$("#colorInput");if(ci)ci.addEventListener('input',()=>{state.color=ci.value;saveLocal();});
   const si=$("#sizeInput");if(si)si.addEventListener('input',()=>{state.size=parseInt(si.value,10)||20;saveLocal();renderAll();});
   const cust=$("#customInput");if(cust)cust.addEventListener('input',()=>{state.custom=cust.value;saveLocal();});
+
   const undo=$("#undoBtn");if(undo)undo.addEventListener('click',()=>{if(!undoStack.length)return;redoStack.push(JSON.stringify({state}));restore(undoStack.pop());});
   const redo=$("#redoBtn");if(redo)redo.addEventListener('click',()=>{if(!redoStack.length)return;undoStack.push(JSON.stringify({state}));restore(redoStack.pop());});
   const save=$("#saveBtn");if(save)save.addEventListener('click',savePNG);
@@ -263,8 +296,10 @@ function openDrawer(tab){
 function closeDrawer(){drawer.classList.remove('open');$$('.tab').forEach(t=>t.classList.remove('active'));}
 
 function init(){
-  loadLocal();setTransform();renderAll();
+  loadLocal();setTransform();renderAll();updateStatus();
+  // 라벨 추가(스테이지 탭)
   stage.addEventListener('click',(e)=>{ if(e.target.closest('.mark')||e.target.closest('.drawer'))return; const p=stageToImageCoords(e.clientX,e.clientY); if(p.x<0||p.y<0)return; addMarkerAt(p.x,p.y); });
+  // 탭 & 드로어
   $$('.tab').forEach(b=>b.addEventListener('click',()=>{const tab=b.dataset.tab;if(b.classList.contains('active'))closeDrawer();else openDrawer(tab);}));
   drawer.addEventListener('click',(e)=>{if(e.target===drawer)closeDrawer();});
   setDeleteMode(deleteMode);
