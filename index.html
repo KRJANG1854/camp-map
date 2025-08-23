@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
-<title>캠핑장 지도 (핀치 후 리셋 방지)</title>
+<title>캠핑장 지도 (초기화 제거·핀치 유지)</title>
 <style>
   :root{--bg:#f7f7fb;--fg:#111827;--muted:#6b7280;--accent:#2563eb;--line:#e5e7eb;}
   html, body { height:100%; overscroll-behavior:none; }
@@ -76,8 +76,8 @@ const $=(s)=>document.querySelector(s);
 const $$=(s)=>Array.from(document.querySelectorAll(s));
 const stage=$("#stageWrap"), inner=$("#inner"), map=$("#map"), drawer=$("#drawer"), drawerContent=$("#drawerContent"), modeStatus=$("#modeStatus"), zoomPct=$("#zoomPct");
 
-function saveLocal(){ localStorage.setItem('camp-pinchfix-v1', JSON.stringify({state, activeLayer, deleteMode, scale, originX, originY})); }
-function loadLocal(){ const raw=localStorage.getItem('camp-pinchfix-v1'); if(raw){ try{ const o=JSON.parse(raw); state=o.state||state; activeLayer=o.activeLayer||activeLayer; deleteMode=!!o.deleteMode; scale=o.scale||1; originX=o.originX||0; originY=o.originY||0; }catch(e){} } }
+function saveLocal(){ localStorage.setItem('camp-noreset-v1', JSON.stringify({state, activeLayer, deleteMode, scale, originX, originY})); }
+function loadLocal(){ const raw=localStorage.getItem('camp-noreset-v1'); if(raw){ try{ const o=JSON.parse(raw); state=o.state||state; activeLayer=o.activeLayer||activeLayer; deleteMode=!!o.deleteMode; scale=o.scale||1; originX=o.originX||0; originY=o.originY||0; }catch(e){} } }
 
 function pushUndo(){ undoStack.push(JSON.stringify({state})); redoStack.length=0; }
 function restore(json){ const o=JSON.parse(json); state=o.state; renderAll(); }
@@ -98,10 +98,9 @@ function zoomAroundScreenPoint(newScale, mx, my){
 function zoom(delta){ const r=stage.getBoundingClientRect(); zoomAroundScreenPoint(scale + delta, r.left + r.width/2, r.top + r.height/2); }
 $("#zoomIn").onclick=()=>zoom(0.1); $("#zoomOut").onclick=()=>zoom(-0.1);
 
-// ---------------- Pinch & Pan with robust double-tap guard ----------------
+// ---- Pinch & Pan (no double-tap reset at all) ----
 const pointers=new Map();
 let panBase=null, pinchBase=null;
-let wasPinching=false;
 
 function midDist(arr){ const p0=arr[0], p1=arr[1]; return { midX:(p0.x+p1.x)/2, midY:(p0.y+p1.y)/2, d:Math.hypot(p1.x-p0.x,p1.y-p0.y) }; }
 
@@ -109,11 +108,10 @@ stage.addEventListener('pointerdown', (e)=>{
   stage.setPointerCapture(e.pointerId);
   pointers.set(e.pointerId, {x:e.clientX, y:e.clientY});
   if(pointers.size===1){
-    panBase={x:e.clientX, y:e.clientY, originX, originY, t:Date.now()};
+    panBase={x:e.clientX, y:e.clientY, originX, originY};
   }else if(pointers.size===2){
     const md=midDist([...pointers.values()]);
     pinchBase={d:md.d, midX:md.midX, midY:md.midY, scale};
-    wasPinching=true;
   }
 }, {passive:false});
 
@@ -132,61 +130,30 @@ stage.addEventListener('pointermove', (e)=>{
   }
 }, {passive:false});
 
-// precise double-tap detector (single-finger only, low movement)
-let lastTapTime=0, lastTapX=0, lastTapY=0;
-const TAP_MAX_DT=300, TAP_MAX_MOVE=10;
-
 stage.addEventListener('pointerup', (e)=>{
   stage.releasePointerCapture(e.pointerId);
-  const p = pointers.get(e.pointerId);
   pointers.delete(e.pointerId);
-
-  // If any pinch happened, skip double-tap logic
-  if(wasPinching){
-    if(pointers.size===0){ wasPinching=false; pinchBase=null; }
-    panBase=null;
-    saveLocal();
-    return;
-  }
-
-  // Single-finger tap detection
-  if(panBase){
-    const dt = Date.now() - panBase.t;
-    const move = p ? Math.hypot((p.x - panBase.x), (p.y - panBase.y)) : 999;
-    if(dt < TAP_MAX_DT && move < TAP_MAX_MOVE && pointers.size===0){
-      // compare with last tap
-      const dt2 = Date.now() - lastTapTime;
-      const mv2 = Math.hypot((p.x - lastTapX), (p.y - lastTapY));
-      if(dt2 < TAP_MAX_DT && mv2 < 40){
-        // double tap -> reset
-        scale=1; originX=originY=0; setTransform(); saveLocal();
-        lastTapTime=0; // consume
-      }else{
-        lastTapTime = Date.now(); lastTapX = p.x; lastTapY = p.y;
-      }
-    }
-  }
-
   if(pointers.size===0){ panBase=null; pinchBase=null; saveLocal(); }
+  else if(pointers.size===1){ const p=[...pointers.values()][0]; panBase={x:p.x,y:p.y,originX,originY}; pinchBase=null; }
 }, {passive:false});
 
 stage.addEventListener('pointercancel', (e)=>{
   pointers.delete(e.pointerId);
-  if(pointers.size===0){ panBase=null; pinchBase=null; wasPinching=false; }
+  if(pointers.size===0){ panBase=null; pinchBase=null; }
 }, {passive:false});
 
-// ----- Touch fallback (iOS) : also guard double-tap strictly -----
+// Touch fallback for iOS
 let tPanBase=null, tPinchBase=null;
 stage.addEventListener('touchstart', (ev)=>{
   if(ev.target.closest('.drawer')) return;
   if(ev.touches.length>=1) ev.preventDefault();
   if(ev.touches.length===1){
-    const t=ev.touches[0]; tPanBase={x:t.clientX,y:t.clientY,originX,originY,t:Date.now()}; tPinchBase=null;
+    const t=ev.touches[0]; tPanBase={x:t.clientX,y:t.clientY,originX,originY}; tPinchBase=null;
   }else if(ev.touches.length>=2){
     const t0=ev.touches[0], t1=ev.touches[1];
     const midX=(t0.clientX+t1.clientX)/2, midY=(t0.clientY+t1.clientY)/2;
     const d=Math.hypot(t1.clientX-t0.clientX,t1.clientY-t0.clientY);
-    tPinchBase={d, midX, midY, scale}; wasPinching=true; tPanBase=null;
+    tPinchBase={d, midX, midY, scale}; tPanBase=null;
   }
 }, {passive:false});
 
@@ -207,26 +174,11 @@ stage.addEventListener('touchmove', (ev)=>{
   }
 }, {passive:false});
 
-let lastTouchTapTime=0, lastTouchTapX=0, lastTouchTapY=0;
 stage.addEventListener('touchend', (ev)=>{
-  if(ev.touches.length===0){
-    // if pinch occurred, do nothing (keep scale)
-    if(wasPinching){ wasPinching=false; tPinchBase=null; tPanBase=null; saveLocal(); return; }
-    // single-finger double tap check
-    if(tPanBase){
-      const dt = Date.now() - tPanBase.t;
-      // no reliable end position; skip double tap unless quick tap
-      if(dt < TAP_MAX_DT){
-        const dt2 = Date.now() - lastTouchTapTime;
-        if(dt2 < TAP_MAX_DT){ scale=1; originX=originY=0; setTransform(); saveLocal(); lastTouchTapTime=0; }
-        else { lastTouchTapTime = Date.now(); }
-      }
-    }
-    tPanBase=null; tPinchBase=null; saveLocal();
-  }
+  if(ev.touches.length===0){ tPanBase=null; tPinchBase=null; saveLocal(); }
 }, {passive:false});
 
-// ---- Core app (labels etc.) ----
+// Core app (labels)
 function stageToImageCoords(clientX,clientY){
   const rect=stage.getBoundingClientRect();
   const x=(clientX-rect.left-originX)/scale;
@@ -295,7 +247,7 @@ function openDrawer(tab){
     <button class="small" id="clearBtn">모두 삭제</button>
     <button class="small btn-toggle" id="btnDelMode">개별삭제</button>
   </div>`;
-  html+=`<div class="row note">핀치=줌 / 드래그=이동 / 더블탭=초기화 • 일반=라벨 추가 / 개별삭제=라벨 탭 삭제</div>`;
+  html+=`<div class="row note">두 손가락 **핀치=줌**, 한 손가락 **드래그=이동** (초기화 기능 제거)</div>`;
   }
   drawerContent.innerHTML=html;
   $$('.wbtn').forEach(b=>b.addEventListener('click',()=>{activeLayer=b.dataset.l;}));
