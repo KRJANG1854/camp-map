@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
-<title>캠핑장 지도 (iOS 제스처 안정화: 핀치/드래그 + 요일 탭)</title>
+<title>캠핑장 지도 (개별삭제 고정판)</title>
 <style>
   :root { --bg:#f7f7fb; --fg:#111827; --muted:#6b7280; --accent:#2563eb; --line:#e5e7eb; }
   html, body { height:100%; overscroll-behavior:none; }
@@ -18,7 +18,7 @@
   #stageWrap { height:78vh; background:#fff; border-radius:1rem; box-shadow:0 8px 24px rgba(0,0,0,.06); position:relative; overflow:hidden; touch-action:none; }
   #inner { position:absolute; left:0; top:0; transform-origin:0 0; touch-action:none; }
   #map { display:block; max-width:none; pointer-events:none; user-select:none; touch-action:none; }
-  .mark { position:absolute; transform:translate(-50%,-50%); background:rgba(255,255,255,.85); border:1px solid #fff; border-radius:999px; box-shadow:0 2px 6px rgba(0,0,0,.15); padding:.05rem .25rem; white-space:nowrap }
+  .mark { position:absolute; transform:translate(-50%,-50%); background:rgba(255,255,255,.85); border:1px solid #fff; border-radius:999px; box-shadow:0 2px 6px rgba(0,0,0,.15); padding:.05rem .25rem; white-space:nowrap; pointer-events:auto; }
   .mark span { font-weight:800; line-height:1 }
   .mark.del { outline:2px dashed #ef4444; outline-offset:2px }
   .drawer { position:fixed; left:0; right:0; bottom:0; background:#fff; border-top:1px solid var(--line); box-shadow:0 -10px 20px rgba(0,0,0,.06); transform:translateY(100%); transition:transform .25s ease; z-index:40 }
@@ -116,14 +116,26 @@ function addMarkerAt(x,y){
 function removeMarker(id){ undoStack.push(JSON.stringify({state})); state.markers=state.markers.filter(m=>m.id!==id); renderAll(); }
 
 const domMap=new Map();
+function attachMarkerHandlers(el, id) {
+  // iOS에서도 확실히 잡히도록 pointer + touch 이벤트 모두 바인딩
+  const handler = (ev) => { 
+    ev.stopPropagation(); 
+    if(deleteMode) { ev.preventDefault(); removeMarker(id); }
+  };
+  el.addEventListener('pointerup', handler, {passive:false});
+  el.addEventListener('click', handler, {passive:true});
+  el.addEventListener('touchend', (ev)=>{ ev.preventDefault(); ev.stopPropagation(); if(deleteMode) removeMarker(id); }, {passive:false});
+}
+
 function renderAll(){
   const ids=new Set(state.markers.map(m=>m.id));
   domMap.forEach((el,id)=>{ if(!ids.has(id)) { el.remove(); domMap.delete(id); } });
   state.markers.forEach(m=>{
     let el=domMap.get(m.id);
-    if(!el){ el=document.createElement('div'); el.className='mark'; el.dataset.id=m.id;
+    if(!el){ 
+      el=document.createElement('div'); el.className='mark'; el.dataset.id=m.id;
       const span=document.createElement('span'); el.appendChild(span); inner.appendChild(el); domMap.set(m.id, el);
-      el.addEventListener('click',(ev)=>{ ev.stopPropagation(); if(deleteMode) removeMarker(m.id); });
+      attachMarkerHandlers(el, m.id);
     }
     el.style.left=m.x+'px'; el.style.top=m.y+'px';
     const span=el.querySelector('span');
@@ -133,7 +145,7 @@ function renderAll(){
   setTransform();
 }
 
-// ---------- 제스처: Pointer + Touch 동시 지원 (iOS 안정화) ----------
+// ---------- 제스처: Pointer + Touch 동시 지원 ----------
 const pointers=new Map();
 let panBase=null, pinchBase=null, wasPinching=false;
 
@@ -171,8 +183,8 @@ stage.addEventListener('pointerup', (e)=>{
   const p = pointers.get(e.pointerId);
   pointers.delete(e.pointerId);
 
-  // 탭(=라벨 생성) 판단: 핀치 없이, 이동 거의 없음
-  if(!wasPinching && p && panBase) {
+  // 탭(=라벨 생성) 판단: 핀치 없이, 이동 거의 없음, 라벨 위를 누른 경우는 marker handler에서 처리
+  if(!wasPinching && p && panBase && !e.target.closest('.mark')) {
     const dx = Math.hypot(p.x - panBase.x, p.y - panBase.y);
     if(dx < 6 && !e.target.closest('.drawer') && !e.target.closest('header')) {
       const pt = stageToImageCoords(e.clientX, e.clientY);
@@ -261,7 +273,7 @@ function openDrawer(tab){
     <button class="small btn-toggle" id="btnDelMode">개별삭제</button>
     <button class="small" id="viewReset">뷰 초기화</button>
   </div>`;
-  html+=`<div class="row note">날짜에서 요일 선택 → 지도 탭 → 해당 요일 라벨 생성 • 두 손가락 핀치=줌 • 한 손가락 드래그=이동</div>`;
+  html+=`<div class="row note">날짜에서 요일 선택 → 지도 탭 → 해당 요일 라벨 생성 • 두 손가락 핀치=줌 • 한 손가락 드래그=이동 • 개별삭제: 라벨을 탭하면 삭제</div>`;
   }
   drawerContent.innerHTML=html;
 
