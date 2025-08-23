@@ -3,37 +3,37 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
-<title>캠핑장 지도 (요일 선택 → 지도 탭 = 라벨 생성)</title>
+<title>캠핑장 지도 (iOS 제스처 안정화: 핀치/드래그 + 요일 탭)</title>
 <style>
-  :root{--bg:#f7f7fb;--fg:#111827;--muted:#6b7280;--accent:#2563eb;--line:#e5e7eb;}
+  :root { --bg:#f7f7fb; --fg:#111827; --muted:#6b7280; --accent:#2563eb; --line:#e5e7eb; }
   html, body { height:100%; overscroll-behavior:none; }
-  *{box-sizing:border-box; -webkit-user-select:none; -webkit-touch-callout:none;}
-  body{margin:0;background:var(--bg);font-family:system-ui,-apple-system,Segoe UI,Roboto,Apple SD Gothic Neo,Pretendard,sans-serif;color:var(--fg)}
-  header{position:sticky;top:0;background:#fff;z-index:30;border-bottom:1px solid var(--line);}
-  .topbar{display:flex;gap:.5rem;align-items:center;padding:.5rem .6rem}
-  .tab{flex:1;border:1px solid var(--line);background:#fff;border-radius:.7rem;padding:.5rem .9rem;font-weight:700;text-align:center}
-  .tab.active{background:var(--accent);color:#fff;border-color:var(--accent)}
-  .status{font-size:.9rem;color:var(--muted);padding-left:.25rem;min-width:180px;text-align:right;flex:0 0 auto}
-  .wrap{padding:.5rem}
-  #stageWrap{height:78vh;background:#fff;border-radius:1rem;box-shadow:0 8px 24px rgba(0,0,0,.06);position:relative;overflow:hidden;touch-action:none}
-  #inner{position:absolute;left:0;top:0;transform-origin:0 0;touch-action:none}
-  #map{display:block;max-width:none;pointer-events:none;user-select:none;touch-action:none}
-  .mark{position:absolute;transform:translate(-50%,-50%);background:rgba(255,255,255,.85);border:1px solid #fff;border-radius:999px;box-shadow:0 2px 6px rgba(0,0,0,.15);padding:.05rem .25rem;white-space:nowrap}
-  .mark span{font-weight:800;line-height:1}
-  .mark.del{outline:2px dashed #ef4444;outline-offset:2px}
-  .drawer{position:fixed;left:0;right:0;bottom:0;background:#fff;border-top:1px solid var(--line);box-shadow:0 -10px 20px rgba(0,0,0,.06);transform:translateY(100%);transition:transform .25s ease;z-index:40}
-  .drawer.open{transform:translateY(0)}
-  .drawer .handle{width:44px;height:5px;background:#e5e7eb;margin:8px auto;border-radius:8px}
-  .drawer .content{padding:.5rem .8rem 1rem .8rem}
-  .row{display:flex;gap:.5rem;flex-wrap:wrap;align-items:center}
-  button,input[type="color"]{border:1px solid var(--line);background:#fff;border-radius:.7rem;padding:.5rem .9rem;font-weight:700}
-  button.small{padding:.35rem .6rem;font-size:.95rem}
-  .btn-toggle.active{background:var(--accent);color:#fff;border-color:var(--accent)}
-  .chip{border:1px solid var(--line);border-radius:1rem;padding:.25rem .6rem;background:#fff;white-space:nowrap}
-  .range{width:180px}
-  .note{font-size:.9rem;color:#6b7280}
-  .zoomBar{position:absolute;left:.75rem;bottom:.75rem;display:flex;gap:.4rem;z-index:20}
-  .zoomBar button{width:44px;height:44px;border-radius:999px;box-shadow:0 6px 16px rgba(0,0,0,.12)}
+  * { box-sizing:border-box; -webkit-user-select:none; -webkit-touch-callout:none; }
+  body { margin:0; background:var(--bg); font-family:system-ui,-apple-system,Segoe UI,Roboto,Apple SD Gothic Neo,Pretendard,sans-serif; color:var(--fg) }
+  header { position:sticky; top:0; background:#fff; z-index:30; border-bottom:1px solid var(--line); }
+  .topbar { display:flex; gap:.5rem; align-items:center; padding:.5rem .6rem }
+  .tab { flex:1; border:1px solid var(--line); background:#fff; border-radius:.7rem; padding:.5rem .9rem; font-weight:700; text-align:center }
+  .tab.active { background:var(--accent); color:#fff; border-color:var(--accent) }
+  .status { font-size:.9rem; color:var(--muted); padding-left:.25rem; min-width:180px; text-align:right; flex:0 0 auto }
+  .wrap { padding:.5rem }
+  #stageWrap { height:78vh; background:#fff; border-radius:1rem; box-shadow:0 8px 24px rgba(0,0,0,.06); position:relative; overflow:hidden; touch-action:none; }
+  #inner { position:absolute; left:0; top:0; transform-origin:0 0; touch-action:none; }
+  #map { display:block; max-width:none; pointer-events:none; user-select:none; touch-action:none; }
+  .mark { position:absolute; transform:translate(-50%,-50%); background:rgba(255,255,255,.85); border:1px solid #fff; border-radius:999px; box-shadow:0 2px 6px rgba(0,0,0,.15); padding:.05rem .25rem; white-space:nowrap }
+  .mark span { font-weight:800; line-height:1 }
+  .mark.del { outline:2px dashed #ef4444; outline-offset:2px }
+  .drawer { position:fixed; left:0; right:0; bottom:0; background:#fff; border-top:1px solid var(--line); box-shadow:0 -10px 20px rgba(0,0,0,.06); transform:translateY(100%); transition:transform .25s ease; z-index:40 }
+  .drawer.open { transform:translateY(0) }
+  .drawer .handle { width:44px; height:5px; background:#e5e7eb; margin:8px auto; border-radius:8px }
+  .drawer .content { padding:.5rem .8rem 1rem .8rem }
+  .row { display:flex; gap:.5rem; flex-wrap:wrap; align-items:center }
+  button, input[type="color"] { border:1px solid var(--line); background:#fff; border-radius:.7rem; padding:.5rem .9rem; font-weight:700 }
+  button.small { padding:.35rem .6rem; font-size:.95rem }
+  .btn-toggle.active { background:var(--accent); color:#fff; border-color:var(--accent) }
+  .chip { border:1px solid var(--line); border-radius:1rem; padding:.25rem .6rem; background:#fff; white-space:nowrap }
+  .range { width:180px }
+  .note { font-size:.9rem; color:#6b7280 }
+  .zoomBar { position:absolute; left:.75rem; bottom:.75rem; display:flex; gap:.4rem; z-index:20 }
+  .zoomBar button { width:44px; height:44px; border-radius:999px; box-shadow:0 6px 16px rgba(0,0,0,.12) }
 </style>
 </head>
 <body>
@@ -64,32 +64,27 @@
 </div>
 
 <script>
-// --------- 상태 ---------
-let state={markers:[], color:'#111827', size:20, custom:''};
-let activeLayer='MON';
-let deleteMode=false;
+// ---------- 상태 ----------
+let state = { markers:[], color:'#111827', size:20, custom:'' };
+let activeLayer = 'MON';
+let deleteMode = false;
 let undoStack=[], redoStack=[];
 let scale=1, originX=0, originY=0;
+
 const weekdays=[
   {k:'월',layer:'MON'},{k:'화',layer:'TUE'},{k:'수',layer:'WED'},{k:'목',layer:'THU'},{k:'금',layer:'FRI'},{k:'토',layer:'SAT'},{k:'일',layer:'SUN'}
 ];
+
 const $=(s)=>document.querySelector(s);
 const $$=(s)=>Array.from(document.querySelectorAll(s));
 const stage=$("#stageWrap"), inner=$("#inner"), map=$("#map"), drawer=$("#drawer"), drawerContent=$("#drawerContent"), modeStatus=$("#modeStatus"), zoomPct=$("#zoomPct");
 
-function saveLocal(){ localStorage.setItem('camp-tapday-v1', JSON.stringify({state, activeLayer, deleteMode, scale, originX, originY})); }
-function loadLocal(){ const raw=localStorage.getItem('camp-tapday-v1'); if(raw){ try{ const o=JSON.parse(raw); state=o.state||state; activeLayer=o.activeLayer||activeLayer; deleteMode=!!o.deleteMode; scale=o.scale||1; originX=o.originX||0; originY=o.originY||0; }catch(e){} } }
+function labelName() { return weekdays.find(w=>w.layer===activeLayer).k; }
+function updateStatus() { modeStatus.textContent = '라벨: ' + labelName() + ' • ' + (deleteMode?'개별삭제 모드':'일반 모드'); }
 
-function labelName(){ return weekdays.find(w=>w.layer===activeLayer).k; }
-function updateStatus(){ modeStatus.textContent = '라벨: ' + labelName() + ' • ' + (deleteMode?'개별삭제 모드':'일반 모드'); }
-
-function pushUndo(){ undoStack.push(JSON.stringify({state})); redoStack.length=0; }
-function restore(json){ const o=JSON.parse(json); state=o.state; renderAll(); }
-
-// --------- 뷰 변환/줌 ---------
-function setTransform(){ inner.style.transform='translate('+originX+'px,'+originY+'px) scale('+scale+')'; zoomPct.textContent=Math.round(scale*100)+'%'; }
-function clamp(v,a,b){ return Math.max(a, Math.min(b, v)); }
-function zoomAroundScreenPoint(newScale, mx, my){
+function setTransform() { inner.style.transform = 'translate('+originX+'px,'+originY+'px) scale('+scale+')'; zoomPct.textContent=Math.round(scale*100)+'%'; }
+function clamp(v,a,b) { return Math.max(a, Math.min(b, v)); }
+function zoomAroundScreenPoint(newScale, mx, my) {
   newScale = clamp(newScale, 0.3, 3);
   const rect = stage.getBoundingClientRect();
   const sx = mx - rect.left, sy = my - rect.top;
@@ -98,32 +93,72 @@ function zoomAroundScreenPoint(newScale, mx, my){
   scale = newScale;
   originX = sx - imgX * scale;
   originY = sy - imgY * scale;
-  setTransform(); saveLocal();
+  setTransform();
 }
-function zoom(delta){ const r=stage.getBoundingClientRect(); zoomAroundScreenPoint(scale + delta, r.left + r.width/2, r.top + r.height/2); }
+function zoom(delta) { const r=stage.getBoundingClientRect(); zoomAroundScreenPoint(scale + delta, r.left + r.width/2, r.top + r.height/2); }
 $("#zoomIn").onclick=()=>zoom(0.1); $("#zoomOut").onclick=()=>zoom(-0.1);
 
-// --------- 핀치/팬 (iOS 호환) ---------
-const pointers=new Map();
-let panBase=null, pinchBase=null;
-function midDist(arr){ const p0=arr[0], p1=arr[1]; return { midX:(p0.x+p1.x)/2, midY:(p0.y+p1.y)/2, d:Math.hypot(p1.x-p0.x,p1.y-p0.y) }; }
+// ---------- 공통 유틸 ----------
+function stageToImageCoords(clientX,clientY){
+  const rect=stage.getBoundingClientRect();
+  const x=(clientX-rect.left-originX)/scale;
+  const y=(clientY-rect.top-originY)/scale;
+  return {x,y};
+}
+function addMarkerAt(x,y){
+  if(deleteMode) return;
+  const label=(state.custom||'').trim()||(weekdays.find(w=>w.layer===activeLayer).k);
+  const id=String(Date.now())+Math.random().toString(36).slice(2,8);
+  undoStack.push(JSON.stringify({state})); redoStack.length=0;
+  state.markers.push({id,x,y,label,color:state.color,size:state.size,layer:activeLayer,visible:true});
+  renderAll();
+}
+function removeMarker(id){ undoStack.push(JSON.stringify({state})); state.markers=state.markers.filter(m=>m.id!==id); renderAll(); }
 
+const domMap=new Map();
+function renderAll(){
+  const ids=new Set(state.markers.map(m=>m.id));
+  domMap.forEach((el,id)=>{ if(!ids.has(id)) { el.remove(); domMap.delete(id); } });
+  state.markers.forEach(m=>{
+    let el=domMap.get(m.id);
+    if(!el){ el=document.createElement('div'); el.className='mark'; el.dataset.id=m.id;
+      const span=document.createElement('span'); el.appendChild(span); inner.appendChild(el); domMap.set(m.id, el);
+      el.addEventListener('click',(ev)=>{ ev.stopPropagation(); if(deleteMode) removeMarker(m.id); });
+    }
+    el.style.left=m.x+'px'; el.style.top=m.y+'px';
+    const span=el.querySelector('span');
+    span.textContent=m.label; span.style.color=m.color; span.style.fontSize=(m.size||20)+'px';
+    el.classList.toggle('del', deleteMode);
+  });
+  setTransform();
+}
+
+// ---------- 제스처: Pointer + Touch 동시 지원 (iOS 안정화) ----------
+const pointers=new Map();
+let panBase=null, pinchBase=null, wasPinching=false;
+
+// helper
+function midDist(arr) { const p0=arr[0], p1=arr[1]; return { midX:(p0.x+p1.x)/2, midY:(p0.y+p1.y)/2, d:Math.hypot(p1.x-p0.x,p1.y-p0.y) }; }
+
+// Pointer events
 stage.addEventListener('pointerdown', (e)=>{
+  if(e.pointerType==='touch') e.preventDefault();
   stage.setPointerCapture(e.pointerId);
   pointers.set(e.pointerId, {x:e.clientX, y:e.clientY});
-  if(pointers.size===1){ panBase={x:e.clientX, y:e.clientY, originX, originY}; }
-  else if(pointers.size===2){ const md=midDist([...pointers.values()]); pinchBase={d:md.d, midX:md.midX, midY:md.midY, scale}; }
+  if(pointers.size===1) { panBase={x:e.clientX, y:e.clientY, originX, originY}; }
+  else if(pointers.size===2) { const md=midDist([...pointers.values()]); pinchBase={d:md.d, midX:md.midX, midY:md.midY, scale}; wasPinching=true; }
 }, {passive:false});
 
 stage.addEventListener('pointermove', (e)=>{
   if(!pointers.has(e.pointerId)) return;
+  if(e.pointerType==='touch') e.preventDefault();
   pointers.set(e.pointerId, {x:e.clientX, y:e.clientY});
-  if(pointers.size===1 && panBase){
+  if(pointers.size===1 && panBase) { 
     const p=[...pointers.values()][0];
     originX = panBase.originX + (p.x - panBase.x);
     originY = panBase.originY + (p.y - panBase.y);
     setTransform();
-  }else if(pointers.size>=2 && pinchBase){
+  } else if(pointers.size>=2 && pinchBase) {
     const md=midDist([...pointers.values()]); if(pinchBase.d<2) return;
     const newScale = clamp(pinchBase.scale * (md.d/pinchBase.d), 0.3, 3);
     zoomAroundScreenPoint(newScale, md.midX, md.midY);
@@ -131,91 +166,81 @@ stage.addEventListener('pointermove', (e)=>{
 }, {passive:false});
 
 stage.addEventListener('pointerup', (e)=>{
+  if(e.pointerType==='touch') e.preventDefault();
   stage.releasePointerCapture(e.pointerId);
+  const p = pointers.get(e.pointerId);
   pointers.delete(e.pointerId);
-  if(pointers.size===0){ panBase=null; pinchBase=null; saveLocal(); }
-  else if(pointers.size===1){ const p=[...pointers.values()][0]; panBase={x:p.x,y:p.y,originX,originY}; pinchBase=null; }
-}, {passive:false});
 
-stage.addEventListener('pointercancel', (e)=>{
-  pointers.delete(e.pointerId);
-  if(pointers.size===0){ panBase=null; pinchBase=null; }
-}, {passive:false});
-
-// --------- 라벨 찍기 (지도 탭) ---------
-const TAP_MOVE=10;
-let lastPD={x:0,y:0,time:0};
-
-function stageToImageCoords(clientX,clientY){
-  const rect=stage.getBoundingClientRect();
-  const x=(clientX-rect.left-originX)/scale;
-  const y=(clientY-rect.top-originY)/scale;
-  return{x,y};
-}
-function addMarkerAt(x,y){
-  if(deleteMode)return;
-  const label=(state.custom||'').trim()||(weekdays.find(w=>w.layer===activeLayer).k);
-  const id=String(Date.now())+Math.random().toString(36).slice(2,8);
-  pushUndo();
-  state.markers.push({id,x,y,label,color:state.color,size:state.size,layer:activeLayer,visible:true});
-  renderAll();
-}
-
-stage.addEventListener('pointerdown',(e)=>{ 
-  if(e.target.closest('.drawer')||e.target.closest('header')) return; // UI 클릭은 제외
-  lastPD={x:e.clientX,y:e.clientY,time:Date.now()};
-},{passive:false});
-
-stage.addEventListener('pointerup',(e)=>{
-  if(e.target.closest('.drawer')||e.target.closest('header')) return;
-  const dx=Math.hypot(e.clientX-lastPD.x, e.clientY-lastPD.y);
-  if(dx<TAP_MOVE && Date.now()-lastPD.time<500 && pointers.size===0){ 
-    const p=stageToImageCoords(e.clientX,e.clientY);
-    if(p.x>=0 && p.y>=0) addMarkerAt(p.x,p.y);
+  // 탭(=라벨 생성) 판단: 핀치 없이, 이동 거의 없음
+  if(!wasPinching && p && panBase) {
+    const dx = Math.hypot(p.x - panBase.x, p.y - panBase.y);
+    if(dx < 6 && !e.target.closest('.drawer') && !e.target.closest('header')) {
+      const pt = stageToImageCoords(e.clientX, e.clientY);
+      if(pt.x>=0 && pt.y>=0) addMarkerAt(pt.x, pt.y);
+    }
   }
-},{passive:false});
 
-// iOS: 더블탭 줌 차단
+  if(pointers.size===0) { panBase=null; pinchBase=null; wasPinching=false; }
+  else if(pointers.size===1) { const q=[...pointers.values()][0]; panBase={x:q.x,y:q.y,originX,originY}; pinchBase=null; }
+}, {passive:false});
+
+stage.addEventListener('pointercancel', ()=>{ pointers.clear(); panBase=null; pinchBase=null; wasPinching=false; }, {passive:false});
+
+// Touch fallback (older iOS)
+let tPanBase=null, tPinchBase=null;
+stage.addEventListener('touchstart', (ev)=>{
+  if(ev.target.closest('.drawer')) return;
+  ev.preventDefault();
+  if(ev.touches.length===1) { const t=ev.touches[0]; tPanBase={x:t.clientX,y:t.clientY,originX,originY}; tPinchBase=null; }
+  else if(ev.touches.length>=2) { const t0=ev.touches[0], t1=ev.touches[1];
+    const d=Math.hypot(t1.clientX-t0.clientX,t1.clientY-t0.clientY);
+    const midX=(t0.clientX+t1.clientX)/2, midY=(t0.clientY+t1.clientY)/2;
+    tPinchBase={d,midX,midY,scale}; tPanBase=null; wasPinching=true;
+  }
+}, {passive:false});
+
+stage.addEventListener('touchmove', (ev)=>{
+  if(ev.target.closest('.drawer')) return;
+  ev.preventDefault();
+  if(ev.touches.length===1 && tPanBase) { const t=ev.touches[0];
+    originX = tPanBase.originX + (t.clientX - tPanBase.x);
+    originY = tPanBase.originY + (t.clientY - tPanBase.y);
+    setTransform();
+  } else if(ev.touches.length>=2 && tPinchBase) { const t0=ev.touches[0], t1=ev.touches[1];
+    const d=Math.hypot(t1.clientX-t0.clientX,t1.clientY-t0.clientY);
+    const midX=(t0.clientX+t1.clientX)/2, midY=(t0.clientY+t1.clientY)/2;
+    const newScale = clamp(tPinchBase.scale * (d/tPinchBase.d), 0.3, 3);
+    zoomAroundScreenPoint(newScale, midX, midY);
+  }
+}, {passive:false});
+
+stage.addEventListener('touchend', (ev)=>{ 
+  if(ev.touches.length===0) { tPanBase=null; tPinchBase=null; wasPinching=false; }
+}, {passive:false});
+
+// 더블탭 줌 차단
 let lastTouchTime=0;
 stage.addEventListener('touchend',(e)=>{ const now=Date.now(); if(now-lastTouchTime<300) e.preventDefault(); lastTouchTime=now; },{passive:false});
 
-// --------- 렌더링/기능 ---------
-const domMap=new Map();
-function renderAll(){
-  const ids=new Set(state.markers.map(m=>m.id));
-  domMap.forEach((el,id)=>{if(!ids.has(id)){el.remove();domMap.delete(id);}});
-  state.markers.forEach(m=>{
-    let el=domMap.get(m.id);
-    if(!el){
-      el=document.createElement('div');el.className='mark';el.dataset.id=m.id;
-      const span=document.createElement('span');el.appendChild(span);
-      inner.appendChild(el);domMap.set(m.id,el);
-      el.addEventListener('click',(ev)=>{ev.stopPropagation();if(deleteMode)removeMarker(m.id);});
-    }
-    el.style.left=m.x+'px';el.style.top=m.y+'px';
-    const span=el.querySelector('span');
-    span.textContent=m.label;span.style.color=m.color;span.style.fontSize=(m.size||20)+'px';
-    el.classList.toggle('del',deleteMode);
-  });
-  setTransform(); saveLocal();
-}
-function removeMarker(id){pushUndo();state.markers=state.markers.filter(m=>m.id!==id);renderAll();}
-
-function clearAll(){if(!confirm('모두 삭제할까요?'))return;pushUndo();state.markers=[];renderAll();}
+// ---------- Drawer / UI ----------
+function clearAll(){ if(!confirm('모두 삭제할까요?')) return; undoStack.push(JSON.stringify({state})); state.markers=[]; renderAll(); }
 function savePNG(){
   const w=Math.round(map.naturalWidth*scale),h=Math.round(map.naturalHeight*scale);
-  const c=document.createElement('canvas');c.width=w;c.height=h;const ctx=c.getContext('2d');
-  const img=document.getElementById('map');ctx.drawImage(img,0,0,w,h);
-  state.markers.forEach(m=>{const x=m.x*scale,y=m.y*scale;ctx.font='bold '+(m.size*scale)+'px system-ui';ctx.textAlign='center';ctx.textBaseline='middle';ctx.strokeStyle='#fff';ctx.lineWidth=Math.max(2,m.size/6*scale);ctx.strokeText(m.label,x,y);ctx.fillStyle=m.color||'#111827';ctx.fillText(m.label,x,y);});
-  const a=document.createElement('a');a.href=c.toDataURL('image/png');a.download='camp-map-'+new Date().toISOString().slice(0,19).replace(/[T:]/g,'-')+'.png';a.click();
+  const c=document.createElement('canvas'); c.width=w; c.height=h; const ctx=c.getContext('2d');
+  ctx.drawImage(map,0,0,w,h);
+  state.markers.forEach(m=>{ const x=m.x*scale, y=m.y*scale;
+    ctx.font='bold '+(m.size*scale)+'px system-ui'; ctx.textAlign='center'; ctx.textBaseline='middle';
+    ctx.strokeStyle='#fff'; ctx.lineWidth=Math.max(2, m.size/6*scale); ctx.strokeText(m.label,x,y);
+    ctx.fillStyle=m.color; ctx.fillText(m.label,x,y);
+  });
+  const a=document.createElement('a'); a.href=c.toDataURL('image/png'); a.download='camp-map-'+new Date().toISOString().slice(0,19).replace(/[T:]/g,'-')+'.png'; a.click();
 }
-function setDeleteMode(on){deleteMode=!!on;updateStatus();const b=$("#btnDelMode");if(b)b.classList.toggle('active',on);domMap.forEach(el=>el.classList.toggle('del',on));saveLocal();}
+function setDeleteMode(on){ deleteMode=!!on; updateStatus(); const b=$("#btnDelMode"); if(b) b.classList.toggle('active',on); domMap.forEach(el=>el.classList.toggle('del',on)); }
 
-// --------- Drawer ---------
 function openDrawer(tab){
-  const tabs=$$('.tab');tabs.forEach(t=>t.classList.toggle('active',t.dataset.tab===tab));drawer.classList.add('open');
+  const tabs=$$('.tab'); tabs.forEach(t=>t.classList.toggle('active', t.dataset.tab===tab)); drawer.classList.add('open');
   let html='';
-  if(tab==='date'){html+=`<div class="row">
+  if(tab==='date'){ html+=`<div class="row">
     <button class="small wbtn" data-l="MON">월</button>
     <button class="small wbtn" data-l="TUE">화</button>
     <button class="small wbtn" data-l="WED">수</button>
@@ -223,9 +248,10 @@ function openDrawer(tab){
     <button class="small wbtn" data-l="FRI">금</button>
     <button class="small wbtn" data-l="SAT">토</button>
     <button class="small wbtn" data-l="SUN">일</button>
+    <span class="chip">색상 <input type="color" id="colorInput" value="${state.color}"></span>
   </div>`;
-  html+=`<div class="row"><span class="chip">색상 <input type="color" id="colorInput" value="${state.color}"></span><span class="chip">크기 <input type="range" id="sizeInput" min="12" max="40" step="1" value="${state.size}" class="range"></span><span class="chip">라벨 <input id="customInput" placeholder="예: 1, 2, A" style="width:80px" value="${state.custom||''}"></span></div>`;
-  } else if(tab==='tools'){html+=`<div class="row">
+  html+=`<div class="row"><span class="chip">크기 <input type="range" id="sizeInput" min="12" max="40" step="1" value="${state.size}" class="range"></span><span class="chip">라벨 <input id="customInput" placeholder="예: 1, 2, A" style="width:80px" value="${state.custom||''}"></span></div>`;
+  } else if(tab==='tools'){ html+=`<div class="row">
     <button class="small" id="undoBtn">되돌리기</button>
     <button class="small" id="redoBtn">다시</button>
     <button class="small" id="saveBtn">PNG 저장</button>
@@ -235,44 +261,34 @@ function openDrawer(tab){
     <button class="small btn-toggle" id="btnDelMode">개별삭제</button>
     <button class="small" id="viewReset">뷰 초기화</button>
   </div>`;
-  html+=`<div class="row note">날짜에서 요일 선택 → 지도 탭 → 해당 요일 라벨 생성 • 핀치=줌, 드래그=이동, 더블탭 줌 차단</div>`;
+  html+=`<div class="row note">날짜에서 요일 선택 → 지도 탭 → 해당 요일 라벨 생성 • 두 손가락 핀치=줌 • 한 손가락 드래그=이동</div>`;
   }
   drawerContent.innerHTML=html;
 
-  // 요일 버튼
+  // 요일 버튼 (click + touchend)
   $$('.wbtn').forEach(b=>{
-    const setDay=()=>{ 
-      activeLayer=b.dataset.l; 
-      state.custom=''; 
-      updateStatus();
-      $$('.wbtn').forEach(x=>x.classList.remove('active'));
-      b.classList.add('active');
-      setTimeout(()=>drawer.classList.remove('open'), 120); // 선택 후 살짝 있다 자동 닫기 → 지도를 바로 찍기 쉽게
-      saveLocal();
-    };
+    const setDay=()=>{ activeLayer=b.dataset.l; state.custom=''; updateStatus(); $$('.wbtn').forEach(x=>x.classList.remove('active')); b.classList.add('active'); };
     b.addEventListener('click', setDay);
-    b.addEventListener('touchend', (e)=>{e.preventDefault(); setDay();}, {passive:false});
+    b.addEventListener('touchend', (e)=>{ e.preventDefault(); setDay(); }, {passive:false});
   });
 
-  const ci=$("#colorInput");if(ci)ci.addEventListener('input',()=>{state.color=ci.value;saveLocal();});
-  const si=$("#sizeInput");if(si)si.addEventListener('input',()=>{state.size=parseInt(si.value,10)||20;saveLocal();renderAll();});
-  const cust=$("#customInput");if(cust)cust.addEventListener('input',()=>{state.custom=cust.value;saveLocal();});
+  const ci=$("#colorInput"); if(ci) ci.addEventListener('input', ()=>{ state.color=ci.value; });
+  const si=$("#sizeInput"); if(si) si.addEventListener('input', ()=>{ state.size=parseInt(si.value,10)||20; renderAll(); });
+  const cust=$("#customInput"); if(cust) cust.addEventListener('input', ()=>{ state.custom=cust.value; });
 
-  const undo=$("#undoBtn");if(undo)undo.addEventListener('click',()=>{if(!undoStack.length)return;redoStack.push(JSON.stringify({state}));restore(undoStack.pop());});
-  const redo=$("#redoBtn");if(redo)redo.addEventListener('click',()=>{if(!redoStack.length)return;undoStack.push(JSON.stringify({state}));restore(redoStack.pop());});
-  const save=$("#saveBtn");if(save)save.addEventListener('click',savePNG);
-  const clr=$("#clearBtn");if(clr)clr.addEventListener('click',clearAll);
-  const del=$("#btnDelMode");if(del){del.addEventListener('click',()=>setDeleteMode(!deleteMode));del.classList.toggle('active',deleteMode);}
-  const vr=$("#viewReset"); if(vr) vr.addEventListener('click',()=>{ scale=1; originX=0; originY=0; setTransform(); saveLocal(); });
+  const undo=$("#undoBtn"); if(undo) undo.addEventListener('click', ()=>{ if(!undoStack.length) return; redoStack.push(JSON.stringify({state})); const s=undoStack.pop(); state=JSON.parse(s).state; renderAll(); });
+  const redo=$("#redoBtn"); if(redo) redo.addEventListener('click', ()=>{ if(!redoStack.length) return; undoStack.push(JSON.stringify({state})); const s=redoStack.pop(); state=JSON.parse(s).state; renderAll(); });
+  const save=$("#saveBtn"); if(save) save.addEventListener('click', savePNG);
+  const clr=$("#clearBtn"); if(clr) clr.addEventListener('click', clearAll);
+  const del=$("#btnDelMode"); if(del) { del.addEventListener('click', ()=>setDeleteMode(!deleteMode)); del.classList.toggle('active', deleteMode); }
+  const vr=$("#viewReset"); if(vr) vr.addEventListener('click', ()=>{ scale=1; originX=0; originY=0; setTransform(); });
 }
-function closeDrawer(){drawer.classList.remove('open');$$('.tab').forEach(t=>t.classList.remove('active'));}
+function closeDrawer(){ drawer.classList.remove('open'); $$('.tab').forEach(t=>t.classList.remove('active')); }
 
-// --------- 초기화 ---------
 function init(){
-  loadLocal(); setTransform(); renderAll(); updateStatus();
-  // 지도 탭 외에 UI 탭
-  $$('.tab').forEach(b=>b.addEventListener('click',()=>{const tab=b.dataset.tab;if(b.classList.contains('active'))closeDrawer();else openDrawer(tab);}));
-  drawer.addEventListener('click',(e)=>{if(e.target===drawer)closeDrawer();});
+  setTransform(); renderAll(); updateStatus();
+  $$('.tab').forEach(b=>b.addEventListener('click', ()=>{ const tab=b.dataset.tab; if(b.classList.contains('active')) closeDrawer(); else openDrawer(tab); }));
+  drawer.addEventListener('click', (e)=>{ if(e.target===drawer) closeDrawer(); });
 }
 init();
 </script>
