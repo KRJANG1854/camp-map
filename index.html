@@ -3,10 +3,10 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
-<title>캠핑장 지도 (모바일 핀치줌 호환)</title>
+<title>캠핑장 지도 (iOS 핀치줌 호환 강화)</title>
 <style>
   :root{--bg:#f7f7fb;--fg:#111827;--muted:#6b7280;--accent:#2563eb;--line:#e5e7eb;}
-  html, body { height:100%; overscroll-behavior:none; touch-action:none; -ms-touch-action:none; }
+  html, body { height:100%; overscroll-behavior:none; }
   *{box-sizing:border-box; -webkit-user-select:none; -webkit-touch-callout:none;}
   body{margin:0;background:var(--bg);font-family:system-ui,-apple-system,Segoe UI,Roboto,Apple SD Gothic Neo,Pretendard,sans-serif;color:var(--fg)}
   header{position:sticky;top:0;background:#fff;z-index:30;border-bottom:1px solid var(--line);}
@@ -16,8 +16,8 @@
   .status{font-size:.9rem;color:var(--muted);padding-left:.25rem;min-width:130px;text-align:right;flex:0 0 auto}
   .wrap{padding:.5rem}
   #stageWrap{height:78vh;background:#fff;border-radius:1rem;box-shadow:0 8px 24px rgba(0,0,0,.06);position:relative;overflow:hidden;touch-action:none;-ms-touch-action:none}
-  #inner{position:absolute;left:0;top:0;transform-origin:0 0; touch-action:none; -ms-touch-action:none}
-  #map{display:block;max-width:none;pointer-events:none;user-select:none; touch-action:none; -ms-touch-action:none}
+  #inner{position:absolute;left:0;top:0;transform-origin:0 0;touch-action:none;-ms-touch-action:none}
+  #map{display:block;max-width:none;pointer-events:none;user-select:none;touch-action:none;-ms-touch-action:none}
   .mark{position:absolute;transform:translate(-50%,-50%);background:rgba(255,255,255,.8);border:1px solid #fff;border-radius:999px;box-shadow:0 2px 6px rgba(0,0,0,.15);padding:.05rem .25rem;white-space:nowrap}
   .mark span{font-weight:800;line-height:1}
   .mark.del{outline:2px dashed #ef4444;outline-offset:2px}
@@ -76,14 +76,14 @@ const $=(s)=>document.querySelector(s);
 const $$=(s)=>Array.from(document.querySelectorAll(s));
 const stage=$("#stageWrap"), inner=$("#inner"), map=$("#map"), drawer=$("#drawer"), drawerContent=$("#drawerContent"), modeStatus=$("#modeStatus"), zoomPct=$("#zoomPct");
 
-function saveLocal(){ localStorage.setItem('camp-nogps-touch-v2', JSON.stringify({state, activeLayer, deleteMode, scale, originX, originY})); }
-function loadLocal(){ const raw=localStorage.getItem('camp-nogps-touch-v2'); if(raw){ try{ const o=JSON.parse(raw); state=o.state||state; activeLayer=o.activeLayer||activeLayer; deleteMode=!!o.deleteMode; scale=o.scale||1; originX=o.originX||0; originY=o.originY||0; }catch(e){} } }
+function saveLocal(){ localStorage.setItem('camp-iospinch-v1', JSON.stringify({state, activeLayer, deleteMode, scale, originX, originY})); }
+function loadLocal(){ const raw=localStorage.getItem('camp-iospinch-v1'); if(raw){ try{ const o=JSON.parse(raw); state=o.state||state; activeLayer=o.activeLayer||activeLayer; deleteMode=!!o.deleteMode; scale=o.scale||1; originX=o.originX||0; originY=o.originY||0; }catch(e){} } }
 
 function pushUndo(){ undoStack.push(JSON.stringify({state})); redoStack.length=0; }
 function restore(json){ const o=JSON.parse(json); state=o.state; renderAll(); }
 
 function setTransform(){ inner.style.transform='translate('+originX+'px,'+originY+'px) scale('+scale+')'; zoomPct.textContent=Math.round(scale*100)+'%'; }
-function clamp(v, a, b){ return Math.max(a, Math.min(b, v)); }
+function clamp(v,a,b){ return Math.max(a, Math.min(b, v)); }
 function zoomAroundScreenPoint(newScale, mx, my){
   newScale = clamp(newScale, 0.3, 3);
   const rect = stage.getBoundingClientRect();
@@ -95,28 +95,20 @@ function zoomAroundScreenPoint(newScale, mx, my){
   originY = sy - imgY * scale;
   setTransform(); saveLocal();
 }
-function zoom(delta){ zoomAroundScreenPoint(scale + delta, stage.getBoundingClientRect().left + stage.clientWidth/2, stage.getBoundingClientRect().top + stage.clientHeight/2); }
+function zoom(delta){ const r=stage.getBoundingClientRect(); zoomAroundScreenPoint(scale + delta, r.left + r.width/2, r.top + r.height/2); }
 $("#zoomIn").onclick=()=>zoom(0.1); $("#zoomOut").onclick=()=>zoom(-0.1);
 
-// ---------------- Pointer Events (우선) ----------------
-const peSupported = 'PointerEvent' in window;
-const pointers = new Map();
+// ----- Pointer Events -----
+const pointers=new Map();
 let panBase=null, pinchBase=null;
-function getMidAndDist(){
-  const arr=[...pointers.values()];
-  if(arr.length<2) return null;
-  const p0=arr[0], p1=arr[1];
-  const midX=(p0.x+p1.x)/2, midY=(p0.y+p1.y)/2;
-  const d=Math.hypot(p1.x-p0.x, p1.y-p0.y);
-  return {midX, midY, d};
-}
-function peDown(e){
+function midDist(arr){ const p0=arr[0], p1=arr[1]; return { midX:(p0.x+p1.x)/2, midY:(p0.y+p1.y)/2, d:Math.hypot(p1.x-p0.x,p1.y-p0.y) }; }
+function onPointerDown(e){
   stage.setPointerCapture(e.pointerId);
   pointers.set(e.pointerId, {x:e.clientX, y:e.clientY});
   if(pointers.size===1){ panBase={x:e.clientX, y:e.clientY, originX, originY}; }
-  else if(pointers.size===2){ const md=getMidAndDist(); pinchBase={d:md.d, midX:md.midX, midY:md.midY, scale}; }
+  else if(pointers.size===2){ const md=midDist([...pointers.values()]); pinchBase={d:md.d, midX:md.midX, midY:md.midY, scale}; }
 }
-function peMove(e){
+function onPointerMove(e){
   if(!pointers.has(e.pointerId)) return;
   pointers.set(e.pointerId, {x:e.clientX, y:e.clientY});
   if(pointers.size===1 && panBase){
@@ -125,43 +117,33 @@ function peMove(e){
     originY = panBase.originY + (p.y - panBase.y);
     setTransform();
   }else if(pointers.size>=2 && pinchBase){
-    const md=getMidAndDist(); if(!md || pinchBase.d<2) return;
-    const factor = md.d / pinchBase.d;
-    const newScale = clamp(pinchBase.scale * factor, 0.3, 3);
+    const md=midDist([...pointers.values()]); if(pinchBase.d<2) return;
+    const newScale = clamp(pinchBase.scale * (md.d/pinchBase.d), 0.3, 3);
     zoomAroundScreenPoint(newScale, md.midX, md.midY);
   }
 }
-function peUp(e){
+function onPointerUp(e){
   stage.releasePointerCapture(e.pointerId);
   pointers.delete(e.pointerId);
   if(pointers.size===0){ panBase=null; pinchBase=null; saveLocal(); }
-  else if(pointers.size===1){
-    const p=[...pointers.values()][0];
-    panBase = {x:p.x, y:p.y, originX, originY};
-    pinchBase=null;
-  }
-}
-function attachPointer(){
-  stage.addEventListener('pointerdown', peDown);
-  stage.addEventListener('pointermove', peMove);
-  stage.addEventListener('pointerup', peUp);
-  stage.addEventListener('pointercancel', peUp);
+  else if(pointers.size===1){ const p=[...pointers.values()][0]; panBase={x:p.x,y:p.y,originX,originY}; pinchBase=null; }
 }
 
-// ---------------- Touch Events (iOS 대체 경로) ----------------
+// ----- Touch Events (iOS fallback) -----
 let tPanBase=null, tPinchBase=null;
-function teStart(ev){
+function onTouchStart(ev){
   if(ev.target.closest('.drawer')) return;
+  if(ev.touches.length>=1){ ev.preventDefault(); } // iOS 스크롤/줌 방지
   if(ev.touches.length===1){
     const t=ev.touches[0]; tPanBase={x:t.clientX, y:t.clientY, originX, originY}; tPinchBase=null;
   }else if(ev.touches.length>=2){
     const t0=ev.touches[0], t1=ev.touches[1];
     const midX=(t0.clientX+t1.clientX)/2, midY=(t0.clientY+t1.clientY)/2;
-    const d=Math.hypot(t1.clientX-t0.clientX, t1.clientY-t0.clientY);
+    const d=Math.hypot(t1.clientX-t0.clientX,t1.clientY-t0.clientY);
     tPinchBase={d, midX, midY, scale}; tPanBase=null;
   }
 }
-function teMove(ev){
+function onTouchMove(ev){
   if(ev.target.closest('.drawer')) return;
   ev.preventDefault();
   if(ev.touches.length===1 && tPanBase){
@@ -172,24 +154,20 @@ function teMove(ev){
   }else if(ev.touches.length>=2 && tPinchBase){
     const t0=ev.touches[0], t1=ev.touches[1];
     const midX=(t0.clientX+t1.clientX)/2, midY=(t0.clientY+t1.clientY)/2;
-    const d=Math.hypot(t1.clientX-t0.clientX, t1.clientY-t0.clientY);
-    const factor = d / tPinchBase.d;
-    const newScale = clamp(tPinchBase.scale * factor, 0.3, 3);
+    const d=Math.hypot(t1.clientX-t0.clientX,t1.clientY-t0.clientY);
+    const newScale = clamp(tPinchBase.scale * (d/tPinchBase.d), 0.3, 3);
     zoomAroundScreenPoint(newScale, midX, midY);
   }
 }
-function teEnd(ev){
-  if(ev.touches.length===0){ tPanBase=null; tPinchBase=null; saveLocal(); }
-}
+function onTouchEnd(ev){ if(ev.touches.length===0){ tPanBase=null; tPinchBase=null; saveLocal(); } }
 
-function attachTouch(){
-  stage.addEventListener('touchstart', teStart, {passive:false});
-  stage.addEventListener('touchmove', teMove, {passive:false});
-  stage.addEventListener('touchend', teEnd, {passive:false});
-  stage.addEventListener('touchcancel', teEnd, {passive:false});
-}
+// ----- iOS old gesture events fallback -----
+let gBase=null;
+function onGestureStart(e){ e.preventDefault(); gBase={scale, cx:window.innerWidth/2, cy:window.innerHeight/2}; }
+function onGestureChange(e){ if(!gBase) return; e.preventDefault(); const ns=clamp(gBase.scale * e.scale, 0.3, 3); zoomAroundScreenPoint(ns, gBase.cx, gBase.cy); }
+function onGestureEnd(e){ e.preventDefault(); gBase=null; saveLocal(); }
 
-// Double-tap reset (touch & pointer 공용)
+// Double-tap reset
 let lastTap=0;
 stage.addEventListener('pointerup',(e)=>{ const now=Date.now(); if(now-lastTap<300){ scale=1; originX=originY=0; setTransform(); saveLocal(); } lastTap=now; });
 
@@ -278,14 +256,28 @@ function closeDrawer(){drawer.classList.remove('open');$$('.tab').forEach(t=>t.c
 
 function init(){
   loadLocal();setTransform();renderAll();
-  // 라벨 추가(탭)
+  // 라벨 추가(탭) - iOS에서 기본 제스처 막힘 방지
   stage.addEventListener('click',(e)=>{ if(e.target.closest('.mark')||e.target.closest('.drawer'))return; const p=stageToImageCoords(e.clientX,e.clientY); if(p.x<0||p.y<0)return; addMarkerAt(p.x,p.y); });
   // 탭 & 드로어
   $$('.tab').forEach(b=>b.addEventListener('click',()=>{const tab=b.dataset.tab;if(b.classList.contains('active'))closeDrawer();else openDrawer(tab);}));
   drawer.addEventListener('click',(e)=>{if(e.target===drawer)closeDrawer();});
+
   // 입력 경로 부착
-  if(peSupported) attachPointer();
-  attachTouch(); // iOS 대체 경로(중복 허용, 같은 프레임에서 경쟁하지 않음)
+  // Pointer Events (일부 iOS 버전에서 제한적)
+  stage.addEventListener('pointerdown', onPointerDown, {passive:false});
+  stage.addEventListener('pointermove', onPointerMove, {passive:false});
+  stage.addEventListener('pointerup', onPointerUp, {passive:false});
+  stage.addEventListener('pointercancel', onPointerUp, {passive:false});
+  // Touch Fallback
+  stage.addEventListener('touchstart', onTouchStart, {passive:false});
+  stage.addEventListener('touchmove', onTouchMove, {passive:false});
+  stage.addEventListener('touchend', onTouchEnd, {passive:false});
+  stage.addEventListener('touchcancel', onTouchEnd, {passive:false});
+  // iOS 구형 제스처 이벤트 fallback
+  stage.addEventListener('gesturestart', onGestureStart);
+  stage.addEventListener('gesturechange', onGestureChange);
+  stage.addEventListener('gestureend', onGestureEnd);
+
   setDeleteMode(deleteMode);
 }
 init();
