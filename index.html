@@ -3,10 +3,10 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
-<title>캠핑장 지도 (GPS 제거)</title>
+<title>캠핑장 지도 (핀치줌 추가)</title>
 <style>
   :root{--bg:#f7f7fb;--fg:#111827;--muted:#6b7280;--accent:#2563eb;--line:#e5e7eb;}
-  *{box-sizing:border-box}
+  *{box-sizing:border-box; touch-action: none;}
   body{margin:0;background:var(--bg);font-family:system-ui,-apple-system,Segoe UI,Roboto,Apple SD Gothic Neo,Pretendard,sans-serif;color:var(--fg)}
   header{position:sticky;top:0;background:#fff;z-index:30;border-bottom:1px solid var(--line);}
   .topbar{display:flex;gap:.5rem;align-items:center;padding:.5rem .6rem}
@@ -75,22 +75,94 @@ const $=(s)=>document.querySelector(s);
 const $$=(s)=>Array.from(document.querySelectorAll(s));
 const stage=$("#stageWrap"), inner=$("#inner"), map=$("#map"), drawer=$("#drawer"), drawerContent=$("#drawerContent"), modeStatus=$("#modeStatus"), zoomPct=$("#zoomPct");
 
-function saveLocal(){ localStorage.setItem('camp-nogps-v3', JSON.stringify({state, activeLayer, deleteMode, scale, originX, originY})); }
-function loadLocal(){ const raw=localStorage.getItem('camp-nogps-v3'); if(raw){ try{ const o=JSON.parse(raw); state=o.state||state; activeLayer=o.activeLayer||activeLayer; deleteMode=!!o.deleteMode; scale=o.scale||1; originX=o.originX||0; originY=o.originY||0; }catch(e){} } }
+function saveLocal(){ localStorage.setItem('camp-nogps-touch-v1', JSON.stringify({state, activeLayer, deleteMode, scale, originX, originY})); }
+function loadLocal(){ const raw=localStorage.getItem('camp-nogps-touch-v1'); if(raw){ try{ const o=JSON.parse(raw); state=o.state||state; activeLayer=o.activeLayer||activeLayer; deleteMode=!!o.deleteMode; scale=o.scale||1; originX=o.originX||0; originY=o.originY||0; }catch(e){} } }
 
 function pushUndo(){ undoStack.push(JSON.stringify({state})); redoStack.length=0; }
 function restore(json){ const o=JSON.parse(json); state=o.state; renderAll(); }
 
 function setTransform(){ inner.style.transform='translate('+originX+'px,'+originY+'px) scale('+scale+')'; zoomPct.textContent=Math.round(scale*100)+'%'; }
-function zoom(delta){ scale=Math.min(3,Math.max(0.3,scale+delta)); setTransform(); saveLocal(); }
+function clamp(val, min, max){ return Math.max(min, Math.min(max, val)); }
+function zoomAroundScreenPoint(newScale, mx, my){
+  // Keep the image point under (mx,my) fixed
+  const oldScale = scale;
+  newScale = clamp(newScale, 0.3, 3);
+  const rect = stage.getBoundingClientRect();
+  const sx = mx - rect.left;
+  const sy = my - rect.top;
+  const imgX = (sx - originX) / oldScale;
+  const imgY = (sy - originY) / oldScale;
+  scale = newScale;
+  originX = sx - imgX * scale;
+  originY = sy - imgY * scale;
+  setTransform(); saveLocal();
+}
+function zoom(delta){ zoomAroundScreenPoint(scale + delta, stage.getBoundingClientRect().left + stage.clientWidth/2, stage.getBoundingClientRect().top + stage.clientHeight/2); }
 $("#zoomIn").onclick=()=>zoom(0.1); $("#zoomOut").onclick=()=>zoom(-0.1);
 
-let isPanning=false,startX=0,startY=0;
-stage.addEventListener('pointerdown',(e)=>{isPanning=true;startX=e.clientX-originX;startY=e.clientY-originY;stage.setPointerCapture(e.pointerId);});
-stage.addEventListener('pointermove',(e)=>{if(!isPanning)return;originX=e.clientX-startX;originY=e.clientY-startY;setTransform();});
-stage.addEventListener('pointerup',()=>{isPanning=false;saveLocal();});
-stage.addEventListener('wheel',(e)=>{e.preventDefault();zoom(e.deltaY<0?0.05:-0.05);},{passive:false});
-stage.addEventListener('dblclick',()=>{scale=1;originX=originY=0;setTransform();saveLocal();});
+// ----- Pan & Pinch (pointer events) -----
+const pointers = new Map();
+let panBase=null;
+let pinchBase=null;
+
+function getMidAndDist(){
+  const arr=[...pointers.values()];
+  if(arr.length<2) return null;
+  const p0=arr[0], p1=arr[1];
+  const midX=(p0.x+p1.x)/2, midY=(p0.y+p1.y)/2;
+  const d=Math.hypot(p1.x-p0.x, p1.y-p0.y);
+  return {midX, midY, d};
+}
+
+stage.addEventListener('pointerdown', (e)=>{
+  stage.setPointerCapture(e.pointerId);
+  pointers.set(e.pointerId, {x:e.clientX, y:e.clientY});
+  if(pointers.size===1){
+    panBase = {x:e.clientX, y:e.clientY, originX, originY};
+  }else if(pointers.size===2){
+    const md = getMidAndDist();
+    pinchBase = {d: md.d, midX: md.midX, midY: md.midY, scale};
+  }
+});
+
+stage.addEventListener('pointermove', (e)=>{
+  if(!pointers.has(e.pointerId)) return;
+  pointers.set(e.pointerId, {x:e.clientX, y:e.clientY});
+  if(pointers.size===1 && panBase){
+    const p=[...pointers.values()][0];
+    originX = panBase.originX + (p.x - panBase.x);
+    originY = panBase.originY + (p.y - panBase.y);
+    setTransform();
+  }else if(pointers.size>=2 && pinchBase){
+    const md=getMidAndDist(); if(!md || pinchBase.d<2) return;
+    const factor = md.d / pinchBase.d;
+    const newScale = clamp(pinchBase.scale * factor, 0.3, 3);
+    zoomAroundScreenPoint(newScale, md.midX, md.midY);
+  }
+});
+
+stage.addEventListener('pointerup', (e)=>{
+  stage.releasePointerCapture(e.pointerId);
+  pointers.delete(e.pointerId);
+  if(pointers.size===0){ panBase=null; pinchBase=null; saveLocal(); }
+  else if(pointers.size===1){ // switch back to pan
+    const p=[...pointers.values()][0];
+    panBase = {x:p.x, y:p.y, originX, originY};
+    pinchBase=null;
+  }
+});
+stage.addEventListener('pointercancel', (e)=>{ pointers.delete(e.pointerId); panBase=null; pinchBase=null; });
+
+// Mouse wheel zoom (desktop)
+stage.addEventListener('wheel',(e)=>{ e.preventDefault(); const delta = e.deltaY<0 ? 0.05 : -0.05; zoomAroundScreenPoint(scale+delta, e.clientX, e.clientY); }, {passive:false});
+
+// Double tap / double click to reset
+let lastTap=0;
+stage.addEventListener('pointerup',(e)=>{
+  const now = Date.now();
+  if(now - lastTap < 300){ scale=1; originX=originY=0; setTransform(); saveLocal(); }
+  lastTap = now;
+});
 
 function stageToImageCoords(clientX,clientY){
   const rect=stage.getBoundingClientRect();
@@ -160,7 +232,7 @@ function openDrawer(tab){
     <button class="small" id="clearBtn">모두 삭제</button>
     <button class="small btn-toggle" id="btnDelMode">개별삭제</button>
   </div>`;
-  html+=`<div class="row note">지도 탭: 일반=라벨 추가 / 개별삭제 모드=라벨 탭 삭제 • 더블탭=뷰 초기화</div>`;
+  html+=`<div class="row note">탭: 일반=라벨 추가 / 개별삭제 모드=라벨 탭 삭제 • 두 손가락 **핀치줌** / 한 손가락 드래그 **이동** • 더블탭=초기화</div>`;
   }
   drawerContent.innerHTML=html;
   $$('.wbtn').forEach(b=>b.addEventListener('click',()=>{activeLayer=b.dataset.l;}));
