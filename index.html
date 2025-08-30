@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
-<title>캠핑장 지도 (백업/복원 추가)</title>
+<title>캠핑장 지도 (iOS 터치 안정판)</title>
 <style>
   :root { --bg:#f7f7fb; --fg:#111827; --muted:#6b7280; --accent:#2563eb; --line:#e5e7eb; }
   html, body { height:100%; overscroll-behavior:none; }
@@ -13,12 +13,12 @@
   .topbar { display:flex; gap:.5rem; align-items:center; padding:.5rem .6rem }
   .tab { flex:1; border:1px solid var(--line); background:#fff; border-radius:.7rem; padding:.5rem .9rem; font-weight:700; text-align:center }
   .tab.active { background:var(--accent); color:#fff; border-color:var(--accent) }
-  .status { font-size:.9rem; color:var(--muted); padding-left:.25rem; min-width:260px; text-align:right; flex:0 0 auto }
+  .status { font-size:.9rem; color:var(--muted); padding-left:.25rem; min-width:200px; text-align:right; flex:0 0 auto }
   .wrap { padding:.5rem }
-  #stageWrap { height:78vh; background:#fff; border-radius:1rem; box-shadow:0 8px 24px rgba(0,0,0,.06); position:relative; overflow:hidden; touch-action:none; }
-  #inner { position:absolute; left:0; top:0; transform-origin:0 0; touch-action:none; }
-  #map { display:block; max-width:none; pointer-events:none; user-select:none; touch-action:none; }
-  .mark { position:absolute; transform:translate(-50%,-50%); background:rgba(255,255,255,.9); border:1px solid #fff; border-radius:999px; box-shadow:0 2px 6px rgba(0,0,0,.15); padding:.05rem .25rem; white-space:nowrap; pointer-events:auto; }
+  #stageWrap { height:78vh; background:#fff; border-radius:1rem; box-shadow:0 8px 24px rgba(0,0,0,.06); position:relative; overflow:hidden; }
+  #inner { position:absolute; left:0; top:0; transform-origin:0 0; }
+  #map { display:block; max-width:none; pointer-events:none; user-select:none; }
+  .mark { position:absolute; transform:translate(-50%,-50%); background:rgba(255,255,255,.9); border:1px solid #fff; border-radius:999px; box-shadow:0 2px 6px rgba(0,0,0,.15); padding:.05rem .25rem; white-space:nowrap; }
   .mark span { font-weight:800; line-height:1 }
   .mark.del { outline:2px dashed #ef4444; outline-offset:2px }
   .drawer { position:fixed; left:0; right:0; bottom:0; background:#fff; border-top:1px solid var(--line); box-shadow:0 -10px 20px rgba(0,0,0,.06); transform:translateY(100%); transition:transform .25s ease; z-index:40 }
@@ -34,7 +34,6 @@
   .note { font-size:.9rem; color:#6b7280 }
   .zoomBar { position:absolute; left:.75rem; bottom:.75rem; display:flex; gap:.4rem; z-index:20 }
   .zoomBar button { width:44px; height:44px; border-radius:999px; box-shadow:0 6px 16px rgba(0,0,0,.12) }
-  input[type="file"] { display:none; }
 </style>
 </head>
 <body>
@@ -42,7 +41,7 @@
   <div class="topbar">
     <button class="tab" data-tab="date">날짜</button>
     <button class="tab" data-tab="tools">기능</button>
-    <div class="status" id="modeStatus">라벨: 월 • 일반 모드 • 저장:대기</div>
+    <div class="status" id="modeStatus">초기화 중…</div>
   </div>
 </header>
 
@@ -67,90 +66,174 @@
 <input type="file" id="importFile" accept="application/json" />
 
 <script>
-const STORAGE_KEY = 'camp-live-v1';
-let state = {{ markers:[], color:'#111827', size:20, custom:'' }};
+(function(){ 'use strict';
+const STORAGE_KEY = 'camp-live-v1-ios';
+let state = { markers:[], color:'#111827', size:20, custom:'' };
 let activeLayer = 'MON';
 let deleteMode = false;
 let scale=1, originX=0, originY=0;
 let saveDirty=false, saveTimer=null;
+let isDrawerOpen=false;
 
 const weekdays=[
-  {{k:'월',layer:'MON'}},{{k:'화',layer:'TUE'}},{{k:'수',layer:'WED'}},{{k:'목',layer:'THU'}},{{k:'금',layer:'FRI'}},{{k:'토',layer:'SAT'}},{{k:'일',layer:'SUN'}}
+  {k:'월',layer:'MON'},{k:'화',layer:'TUE'},{k:'수',layer:'WED'},{k:'목',layer:'THU'},{k:'금',layer:'FRI'},{k:'토',layer:'SAT'},{k:'일',layer:'SUN'}
 ];
 
 const $=(s)=>document.querySelector(s);
 const $$=(s)=>Array.from(document.querySelectorAll(s));
+
 const stage=$("#stageWrap"), inner=$("#inner"), map=$("#map"), drawer=$("#drawer"), drawerContent=$("#drawerContent"), modeStatus=$("#modeStatus"), zoomPct=$("#zoomPct"), importFile=$("#importFile");
 
-function labelName() {{ return weekdays.find(w=>w.layer===activeLayer).k; }}
-function updateStatus(extra='') {{ 
+function labelName(){ return weekdays.find(w=>w.layer===activeLayer).k; }
+function updateStatus(extra=''){
   const s = saveDirty ? '저장:대기' : '저장:완료';
   modeStatus.textContent = '라벨: ' + labelName() + ' • ' + (deleteMode?'개별삭제 모드':'일반 모드') + ' • ' + s + (extra?(' • '+extra):'');
-}}
+}
 
-function scheduleSave() {{ saveDirty = true; updateStatus(); if(saveTimer) clearTimeout(saveTimer); saveTimer = setTimeout(saveNow, 300); }}
-function saveNow() {{ try{{ const payload = {{ state, activeLayer, deleteMode, scale, originX, originY, t: Date.now() }}; localStorage.setItem(STORAGE_KEY, JSON.stringify(payload)); saveDirty = false; updateStatus(); }}catch(e){{ console.warn('save error', e); }} }}
-function loadNow() {{ try{{ const raw = localStorage.getItem(STORAGE_KEY); if(!raw) return; const o = JSON.parse(raw); if(o && o.state) state = o.state; if(o && o.activeLayer) activeLayer = o.activeLayer; if(o && typeof o.deleteMode==='boolean') deleteMode = o.deleteMode; if(o && o.scale) scale = o.scale; if(o && (typeof o.originX==='number')) originX = o.originX; if(o && (typeof o.originY==='number')) originY = o.originY; }}catch(e){{ console.warn('load error', e); }} }}
+function scheduleSave(){ saveDirty = true; updateStatus(); if(saveTimer) clearTimeout(saveTimer); saveTimer = setTimeout(saveNow, 250); }
+function saveNow(){
+  try { const payload = { state, activeLayer, deleteMode, scale, originX, originY, t: Date.now() }; localStorage.setItem(STORAGE_KEY, JSON.stringify(payload)); saveDirty = false; updateStatus(); }
+  catch(e){ console.warn('save error', e); }
+}
+function loadNow(){
+  try { const raw = localStorage.getItem(STORAGE_KEY); if(!raw) return; const o = JSON.parse(raw); 
+    if(o && o.state) state = o.state;
+    if(o && o.activeLayer) activeLayer = o.activeLayer;
+    if(o && typeof o.deleteMode==='boolean') deleteMode = o.deleteMode;
+    if(o && o.scale) scale = o.scale;
+    if(o && (typeof o.originX==='number')) originX = o.originX;
+    if(o && (typeof o.originY==='number')) originY = o.originY;
+  } catch(e){ console.warn('load error', e); }
+}
 window.addEventListener('pagehide', saveNow);
-document.addEventListener('visibilitychange', ()=>{{ if(document.visibilityState==='hidden') saveNow(); }});
+document.addEventListener('visibilitychange', ()=>{ if(document.visibilityState==='hidden') saveNow(); });
 window.addEventListener('beforeunload', saveNow);
 
-function setTransform() {{ inner.style.transform = 'translate('+originX+'px,'+originY+'px) scale('+scale+')'; zoomPct.textContent=Math.round(scale*100)+'%'; }}
-function clamp(v,a,b) {{ return Math.max(a, Math.min(b, v)); }}
-function zoomAroundScreenPoint(newScale, mx, my) {{
-  newScale = clamp(newScale, 0.3, 3);
-  const rect = stage.getBoundingClientRect();
-  const sx = mx - rect.left, sy = my - rect.top;
-  const imgX = (sx - originX) / scale;
-  const imgY = (sy - originY) / scale;
-  scale = newScale;
-  originX = sx - imgX * scale;
-  originY = sy - imgY * scale;
+function setTransform(){ inner.style.transform = 'translate('+originX+'px,'+originY+'px) scale('+scale+')'; zoomPct.textContent=Math.round(scale*100)+'%'; }
+function clamp(v,a,b){ return Math.max(a, Math.min(b, v)); }
+function zoomAroundCenter(newScale){
+  const rect=stage.getBoundingClientRect();
+  const cx = rect.left + rect.width/2;
+  const cy = rect.top + rect.height/2;
+  const imgX = (cx - rect.left - originX) / scale;
+  const imgY = (cy - rect.top - originY) / scale;
+  scale = clamp(newScale, 0.3, 3);
+  originX = (cx - rect.left) - imgX * scale;
+  originY = (cy - rect.top) - imgY * scale;
   setTransform(); scheduleSave();
-}}
-function zoom(delta) {{ const r=stage.getBoundingClientRect(); zoomAroundScreenPoint(scale + delta, r.left + r.width/2, r.top + r.height/2); }}
-$("#zoomIn").onclick=()=>zoom(0.1); $("#zoomOut").onclick=()=>zoom(-0.1);
+}
+document.addEventListener('DOMContentLoaded', function(){
+  document.getElementById('zoomIn').addEventListener('click', function(){ zoomAroundCenter(scale+0.12); }, {passive:true});
+  document.getElementById('zoomOut').addEventListener('click', function(){ zoomAroundCenter(scale-0.12); }, {passive:true});
+}, {once:true});
 
-function stageToImageCoords(clientX,clientY){{ const rect=stage.getBoundingClientRect(); const x=(clientX-rect.left-originX)/scale; const y=(clientY-rect.top-originY)/scale; return {{x,y}}; }}
-function addMarkerAt(x,y){{ if(deleteMode) return; const label=(state.custom||'').trim()||(weekdays.find(w=>w.layer===activeLayer).k); const id=String(Date.now())+Math.random().toString(36).slice(2,8); state.markers.push({{id,x,y,label,color:state.color,size:state.size,layer:activeLayer,visible:true}}); renderAll(); scheduleSave(); }}
-function removeMarker(id){{ state.markers=state.markers.filter(m=>m.id!==id); renderAll(); scheduleSave(); }}
+function stageToImage(clientX,clientY){
+  const rect=stage.getBoundingClientRect();
+  return { x:(clientX-rect.left-originX)/scale, y:(clientY-rect.top-originY)/scale };
+}
+function addMarkerAt(x,y){
+  if(deleteMode||isDrawerOpen) return;
+  const label=(state.custom||'').trim()||(weekdays.find(w=>w.layer===activeLayer).k);
+  const id=String(Date.now())+Math.random().toString(36).slice(2,8);
+  state.markers.push({id,x,y,label,color:state.color,size:state.size,layer:activeLayer,visible:true});
+  renderAll(); scheduleSave();
+}
+function removeMarker(id){
+  state.markers=state.markers.filter(m=>m.id!==id); renderAll(); scheduleSave();
+}
 
 const domMap=new Map();
-function attachMarkerHandlers(el, id) {{
-  let down={{x:0,y:0,t:0}};
-  const onDown = (ev)=>{{ ev.stopPropagation(); if(ev.cancelable) ev.preventDefault(); down={{x:ev.clientX||0,y:ev.clientY||0,t:Date.now()}}; }};
-  const onUp = (ev)=>{{ ev.stopPropagation(); if(ev.cancelable) ev.preventDefault(); const dx=Math.hypot((ev.clientX||down.x)-down.x, (ev.clientY||down.y)-down.y); const dt=Date.now()-down.t; if(deleteMode && dx<10 && dt<600) removeMarker(id); }};
-  el.addEventListener('pointerdown', onDown, {{passive:false}});
-  el.addEventListener('pointerup', onUp, {{passive:false}});
-  el.addEventListener('touchstart', (e)=>{{ if(e.cancelable) e.preventDefault(); down={{x:e.touches[0].clientX,y:e.touches[0].clientY,t:Date.now()}}; e.stopPropagation(); }}, {{passive:false}});
-  el.addEventListener('touchend', (e)=>{{ const t=e.changedTouches[0]; const dx=Math.hypot((t?.clientX||down.x)-down.x, (t?.clientY||down.y)-down.y); const dt=Date.now()-down.t; if(deleteMode && dx<10 && dt<600) removeMarker(id); e.stopPropagation(); if(e.cancelable) e.preventDefault(); }}, {{passive:false}});
-  el.addEventListener('click', (e)=>{{ e.stopPropagation(); if(deleteMode) removeMarker(id); }}, {{passive:true}});
-}}
-function renderAll(){{ const ids=new Set(state.markers.map(m=>m.id)); domMap.forEach((el,id)=>{{ if(!ids.has(id)) {{ el.remove(); domMap.delete(id); }} }}); state.markers.forEach(m=>{{ let el=domMap.get(m.id); if(!el){{ el=document.createElement('div'); el.className='mark'; el.dataset.id=m.id; const span=document.createElement('span'); el.appendChild(span); inner.appendChild(el); domMap.set(m.id, el); attachMarkerHandlers(el, m.id); }} el.style.left=m.x+'px'; el.style.top=m.y+'px'; const span=el.querySelector('span'); span.textContent=m.label; span.style.color=m.color; span.style.fontSize=(m.size||20)+'px'; el.classList.toggle('del', deleteMode); }}); setTransform(); }}
+function attachMarkerHandlers(el,id){
+  let startX=0,startY=0,startT=0;
+  el.addEventListener('touchstart',(e)=>{ if(e.cancelable) e.preventDefault(); const t=e.touches[0]; startX=t.clientX; startY=t.clientY; startT=Date.now(); },{passive:false});
+  el.addEventListener('touchend',(e)=>{ if(e.cancelable) e.preventDefault(); const t=e.changedTouches[0]; const dx=Math.hypot((t.clientX||startX)-startX,(t.clientY||startY)-startY); const dt=Date.now()-startT; if(deleteMode && dx<10 && dt<600) removeMarker(id); },{passive:false});
+  el.addEventListener('click',(e)=>{ e.stopPropagation(); if(deleteMode) removeMarker(id); });
+}
 
-// gestures
-const pointers=new Map(); let panBase=null, pinchBase=null, wasPinching=false;
-function midDist(arr) {{ const p0=arr[0], p1=arr[1]; return {{ midX:(p0.x+p1.x)/2, midY:(p0.y+p1.y)/2, d:Math.hypot(p1.x-p0.x,p1.y-p0.y) }}; }}
-stage.addEventListener('pointerdown', (e)=>{{ if(e.pointerType==='touch' && e.cancelable) e.preventDefault(); stage.setPointerCapture(e.pointerId); pointers.set(e.pointerId, {{x:e.clientX, y:e.clientY}}); if(pointers.size===1) {{ panBase={{x:e.clientX, y:e.clientY, originX, originY}}; }} else if(pointers.size===2) {{ const md=midDist([...pointers.values()]); pinchBase={{d:md.d, midX:md.midX, midY:md.midY, scale}}; wasPinching=true; }} }}, {{passive:false}});
-stage.addEventListener('pointermove', (e)=>{{ if(!pointers.has(e.pointerId)) return; if(e.pointerType==='touch' && e.cancelable) e.preventDefault(); pointers.set(e.pointerId, {{x:e.clientX, y:e.clientY}}); if(pointers.size===1 && panBase) {{ const p=[...pointers.values()][0]; originX = panBase.originX + (p.x - panBase.x); originY = panBase.originY + (p.y - panBase.y); setTransform(); scheduleSave(); }} else if(pointers.size>=2 && pinchBase) {{ const md=midDist([...pointers.values()]); if(pinchBase.d<2) return; const newScale = Math.max(0.3, Math.min(3, pinchBase.scale * (md.d/pinchBase.d))); zoomAroundScreenPoint(newScale, md.midX, md.midY); }} }}, {{passive:false}});
-stage.addEventListener('pointerup', (e)=>{{ if(e.pointerType==='touch' && e.cancelable) e.preventDefault(); stage.releasePointerCapture(e.pointerId); const p = pointers.get(e.pointerId); pointers.delete(e.pointerId); if(!wasPinching && p && panBase && !e.target.closest('.mark')) {{ const dx = Math.hypot(p.x - panBase.x, p.y - panBase.y); if(dx < 6 && !e.target.closest('.drawer') && !e.target.closest('header')) {{ const pt = stageToImageCoords(e.clientX, e.clientY); if(pt.x>=0 && pt.y>=0) addMarkerAt(pt.x, pt.y); }} }} if(pointers.size===0) {{ panBase=null; pinchBase=null; wasPinching=false; }} else if(pointers.size===1) {{ const q=[...pointers.values()][0]; panBase={{x:q.x,y:q.y,originX,originY}}; pinchBase=null; }} }}, {{passive:false}});
-stage.addEventListener('pointercancel', ()=>{{ pointers.clear(); panBase=null; pinchBase=null; wasPinching=false; }}, {{passive:false}});
-// touch fallback
-let tPanBase=null, tPinchBase=null;
-stage.addEventListener('touchstart', (ev)=>{{ if(ev.target.closest('.drawer')) return; if(ev.cancelable) ev.preventDefault(); if(ev.touches.length===1) {{ const t=ev.touches[0]; tPanBase={{x:t.clientX,y:t.clientY,originX,originY}}; tPinchBase=null; }} else if(ev.touches.length>=2) {{ const t0=ev.touches[0], t1=ev.touches[1]; const d=Math.hypot(t1.clientX-t0.clientX,t1.clientY-t0.clientY); const midX=(t0.clientX+t1.clientX)/2, midY=(t0.clientY+t1.clientY)/2; tPinchBase={{d,midX,midY,scale}}; tPanBase=null; wasPinching=true; }} }}, {{passive:false}});
-stage.addEventListener('touchmove', (ev)=>{{ if(ev.target.closest('.drawer')) return; if(ev.cancelable) ev.preventDefault(); if(ev.touches.length===1 && tPanBase) {{ const t=ev.touches[0]; originX = tPanBase.originX + (t.clientX - tPanBase.x); originY = tPanBase.originY + (t.clientY - tPanBase.y); setTransform(); scheduleSave(); }} else if(ev.touches.length>=2 && tPinchBase) {{ const t0=ev.touches[0], t1=ev.touches[1]; const d=Math.hypot(t1.clientX-t0.clientX,t1.clientY-t0.clientY); const midX=(t0.clientX+t1.clientX)/2, midY=(t0.clientY+t1.clientY)/2; const newScale = Math.max(0.3, Math.min(3, tPinchBase.scale * (d/tPinchBase.d))); zoomAroundScreenPoint(newScale, midX, midY); }} }}, {{passive:false}});
-stage.addEventListener('touchend', (ev)=>{{ if(ev.touches.length===0) {{ tPanBase=null; tPinchBase=null; wasPinching=false; }} }}, {{passive:false}});
-// double-tap zoom prevent
-let lastTouchTime=0; stage.addEventListener('touchend',(e)=>{{ const now=Date.now(); if(now-lastTouchTime<300 && e.cancelable) e.preventDefault(); lastTouchTime=now; }},{{passive:false}});
+function renderAll(){
+  const ids=new Set(state.markers.map(m=>m.id));
+  domMap.forEach((el,id)=>{ if(!ids.has(id)) { el.remove(); domMap.delete(id); } });
+  state.markers.forEach(m=>{
+    let el=domMap.get(m.id);
+    if(!el){ el=document.createElement('div'); el.className='mark'; el.dataset.id=m.id; const span=document.createElement('span'); el.appendChild(span); inner.appendChild(el); domMap.set(m.id, el); attachMarkerHandlers(el,m.id); }
+    el.style.left=m.x+'px'; el.style.top=m.y+'px';
+    const span=el.querySelector('span'); span.textContent=m.label; span.style.color=m.color; span.style.fontSize=(m.size||20)+'px';
+    el.classList.toggle('del', deleteMode);
+  });
+  setTransform();
+}
 
-function clearAll(){{ if(!confirm('모두 삭제할까요?')) return; state.markers=[]; renderAll(); scheduleSave(); }}
-function savePNG(){{ const w=Math.round(map.naturalWidth*scale),h=Math.round(map.naturalHeight*scale); const c=document.createElement('canvas'); c.width=w; c.height=h; const ctx=c.getContext('2d'); ctx.drawImage(map,0,0,w,h); state.markers.forEach(m=>{{ const x=m.x*scale, y=m.y*scale; ctx.font='bold '+(m.size*scale)+'px system-ui'; ctx.textAlign='center'; ctx.textBaseline='middle'; ctx.strokeStyle='#fff'; ctx.lineWidth=Math.max(2, m.size/6*scale); ctx.strokeText(m.label,x,y); ctx.fillStyle=m.color; ctx.fillText(m.label,x,y); }}); const a=document.createElement('a'); a.href=c.toDataURL('image/png'); a.download='camp-map-'+new Date().toISOString().slice(0,19).replace(/[T:]/g,'-')+'.png'; a.click(); }}
-function setDeleteMode(on){{ deleteMode=!!on; updateStatus(); const b=$("#btnDelMode"); if(b) b.classList.toggle('active',on); document.querySelectorAll('.mark').forEach(el=>el.classList.toggle('del',on)); scheduleSave(); }}
+// iOS 전용 터치 제스처
+let panStart=null;
+let pinchStart=null;
 
-function exportJSON(){{ const payload = {{ state, activeLayer, deleteMode, scale, originX, originY, exportedAt: new Date().toISOString() }}; const blob = new Blob([JSON.stringify(payload,null,2)], {{type:'application/json'}}); const a=document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'camp-map-backup-' + new Date().toISOString().slice(0,19).replace(/[T:]/g,'-') + '.json'; document.body.appendChild(a); a.click(); a.remove(); setTimeout(()=>URL.revokeObjectURL(a.href), 1000); }}
-function importJSONFromFile(file){{ const reader = new FileReader(); reader.onload = (e)=>{{ try{{ const obj = JSON.parse(e.target.result); if(!obj || !obj.state || !Array.isArray(obj.state.markers)) throw new Error('형식 오류'); state = obj.state; activeLayer = obj.activeLayer || 'MON'; deleteMode = !!obj.deleteMode; scale = obj.scale || 1; originX = obj.originX || 0; originY = obj.originY || 0; renderAll(); updateStatus('복원완료'); scheduleSave(); alert('복원 완료!'); }} catch(err){{ alert('복원 실패: ' + (err.message||'형식 오류')); }} }}; reader.readAsText(file, 'utf-8'); }}
+stage.addEventListener('touchstart',(ev)=>{
+  if(ev.cancelable) ev.preventDefault();
+  if(ev.touches.length===1){ const t=ev.touches[0]; panStart={x:t.clientX,y:t.clientY,originX,originY}; }
+  else if(ev.touches.length===2){ const t0=ev.touches[0], t1=ev.touches[1]; const d=Math.hypot(t1.clientX-t0.clientX,t1.clientY-t0.clientY); pinchStart={d,scale}; panStart=null; }
+},{passive:false});
 
-function openDrawer(tab){{ const tabs=$$('.tab'); tabs.forEach(t=>t.classList.toggle('active', t.dataset.tab===tab)); drawer.classList.add('open'); let html=''; if(tab==='date'){{ html+=`<div class="row">
+stage.addEventListener('touchmove',(ev)=>{
+  if(ev.cancelable) ev.preventDefault();
+  if(ev.touches.length===1 && panStart){ const t=ev.touches[0]; originX = panStart.originX + (t.clientX - panStart.x); originY = panStart.originY + (t.clientY - panStart.y); setTransform(); scheduleSave(); }
+  else if(ev.touches.length===2 && pinchStart){ const t0=ev.touches[0], t1=ev.touches[1]; const d=Math.hypot(t1.clientX-t0.clientX,t1.clientY-t0.clientY); scale = Math.max(0.3, Math.min(3, pinchStart.scale * (d/pinchStart.d))); setTransform(); scheduleSave(); }
+},{passive:false});
+
+stage.addEventListener('touchend',(ev)=>{
+  if(ev.cancelable) ev.preventDefault();
+  if(ev.touches.length===0){ 
+    if(pinchStart==null && panStart){ const dx=Math.hypot(originX - panStart.originX, originY - panStart.originY); if(dx<6 && !isDrawerOpen){ const t=ev.changedTouches[0]; const pt=stageToImage(t.clientX,t.clientY); addMarkerAt(pt.x,pt.y); } }
+    panStart=null; pinchStart=null;
+  }
+},{passive:false});
+
+let lastTouch=0;
+stage.addEventListener('touchend',(e)=>{ const now=Date.now(); if(now-lastTouch<300 && e.cancelable) e.preventDefault(); lastTouch=now; },{passive:false});
+
+function clearAll(){ if(!confirm('모두 삭제할까요?')) return; state.markers=[]; renderAll(); scheduleSave(); }
+function savePNG(){
+  const w=Math.round(map.naturalWidth*scale),h=Math.round(map.naturalHeight*scale);
+  const c=document.createElement('canvas'); c.width=w; c.height=h; const ctx=c.getContext('2d');
+  ctx.drawImage(map,0,0,w,h);
+  state.markers.forEach(m=>{ const x=m.x*scale, y=m.y*scale;
+    ctx.font='bold '+(m.size*scale)+'px system-ui'; ctx.textAlign='center'; ctx.textBaseline='middle';
+    ctx.strokeStyle='#fff'; ctx.lineWidth=Math.max(2, m.size/6*scale); ctx.strokeText(m.label,x,y);
+    ctx.fillStyle=m.color; ctx.fillText(m.label,x,y);
+  });
+  const a=document.createElement('a'); a.href=c.toDataURL('image/png'); a.download='camp-map-'+new Date().toISOString().slice(0,19).replace(/[T:]/g,'-')+'.png'; a.click();
+}
+function setDeleteMode(on){ deleteMode=!!on; document.querySelectorAll('.mark').forEach(el=>el.classList.toggle('del',on)); updateStatus(); scheduleSave(); }
+
+function exportJSON(){
+  const payload = { state, activeLayer, deleteMode, scale, originX, originY, exportedAt: new Date().toISOString() };
+  const blob = new Blob([JSON.stringify(payload,null,2)], {type:'application/json'});
+  const a=document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'camp-map-backup-'+new Date().toISOString().slice(0,19).replace(/[T:]/g,'-') + '.json'; document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(()=>URL.revokeObjectURL(a.href), 1000);
+}
+function importJSONFromFile(file){
+  const reader = new FileReader();
+  reader.onload = (e)=>{
+    try{
+      const obj = JSON.parse(e.target.result);
+      if(!obj || !obj.state || !Array.isArray(obj.state.markers)) throw new Error('형식 오류');
+      state = obj.state;
+      activeLayer = obj.activeLayer || 'MON';
+      deleteMode = !!obj.deleteMode;
+      scale = obj.scale || 1; originX = obj.originX || 0; originY = obj.originY || 0;
+      renderAll(); updateStatus('복원완료'); scheduleSave();
+      alert('복원 완료!');
+    } catch(err){
+      alert('복원 실패: ' + (err.message||'형식 오류'));
+    }
+  };
+  reader.readAsText(file, 'utf-8');
+}
+
+function openDrawer(tab){
+  isDrawerOpen=true;
+  const tabs=$$('.tab'); tabs.forEach(t=>t.classList.toggle('active', t.dataset.tab===tab)); drawer.classList.add('open');
+  let html='';
+  if(tab==='date'){ html+=`<div class="row">
     <button class="small wbtn" data-l="MON">월</button>
     <button class="small wbtn" data-l="TUE">화</button>
     <button class="small wbtn" data-l="WED">수</button>
@@ -158,30 +241,50 @@ function openDrawer(tab){{ const tabs=$$('.tab'); tabs.forEach(t=>t.classList.to
     <button class="small wbtn" data-l="FRI">금</button>
     <button class="small wbtn" data-l="SAT">토</button>
     <button class="small wbtn" data-l="SUN">일</button>
-    <span class="chip">색상 <input type="color" id="colorInput" value="`+state.color+`"></span>
-  </div>`; html+=`<div class="row"><span class="chip">크기 <input type="range" id="sizeInput" min="12" max="40" step="1" value="`+state.size+`" class="range"></span><span class="chip">라벨 <input id="customInput" placeholder="예: 1, 2, A" style="width:80px" value="`+(state.custom||'')+`"></span></div>`; }} else if(tab==='tools'){{ html+=`<div class="row">
+    <span class="chip">색상 <input type="color" id="colorInput" value="${state.color}"></span>
+  </div>`;
+  html+=`<div class="row"><span class="chip">크기 <input type="range" id="sizeInput" min="12" max="40" step="1" value="${state.size}" class="range"></span><span class="chip">라벨 <input id="customInput" placeholder="예: 1, 2, A" style="width:80px" value="${state.custom||''}"></span></div>`;
+  } else if(tab==='tools'){ html+=`<div class="row">
     <button class="small" id="saveBtn">PNG 저장</button>
     <button class="small" id="clearBtn">모두 삭제</button>
     <button class="small btn-toggle" id="btnDelMode">개별삭제</button>
     <button class="small" id="viewReset">뷰 초기화</button>
-  </div>`; html+=`<div class="row">
+  </div>`;
+  html+=`<div class="row">
     <button class="small" id="exportBtn">내보내기(JSON)</button>
     <button class="small" id="importBtn">가져오기(JSON)</button>
-  </div>`; html+=`<div class="row note">개별삭제: 라벨 탭 • 내보내기/가져오기: 상태 백업/복원</div>`; }} drawerContent.innerHTML=html;
-  $$('.wbtn').forEach(b=>{{ const setDay=()=>{{ activeLayer=b.dataset.l; state.custom=''; updateStatus(); $$('.wbtn').forEach(x=>x.classList.remove('active')); b.classList.add('active'); scheduleSave(); }}; b.addEventListener('click', setDay); b.addEventListener('touchend', (e)=>{{ if(e.cancelable) e.preventDefault(); setDay(); }}, {{passive:false}}); }});
-  const ci=$("#colorInput"); if(ci) ci.addEventListener('input', ()=>{{ state.color=ci.value; scheduleSave(); }});
-  const si=$("#sizeInput"); if(si) si.addEventListener('input', ()=>{{ state.size=parseInt(si.value,10)||20; renderAll(); scheduleSave(); }});
-  const cust=$("#customInput"); if(cust) cust.addEventListener('input', ()=>{{ state.custom=cust.value; scheduleSave(); }});
-  const save=$("#saveBtn"); if(save) save.addEventListener('click', savePNG);
-  const clr=$("#clearBtn"); if(clr) clr.addEventListener('click', clearAll);
-  const del=$("#btnDelMode"); if(del) {{ del.addEventListener('click', ()=>setDeleteMode(!deleteMode)); del.classList.toggle('active', deleteMode); }}
-  const vr=$("#viewReset"); if(vr) vr.addEventListener('click', ()=>{{ scale=1; originX=0; originY=0; setTransform(); scheduleSave(); }});
-  const exp=$("#exportBtn"); if(exp) exp.addEventListener('click', exportJSON);
-  const imp=$("#importBtn"); if(imp) imp.addEventListener('click', ()=>{{ importFile.click(); }});
-}}
-function closeDrawer(){{ drawer.classList.remove('open'); $$('.tab').forEach(t=>t.classList.remove('active')); }}
-function init(){{ loadNow(); setTransform(); renderAll(); updateStatus(); $$('.tab').forEach(b=>b.addEventListener('click', ()=>{{ const tab=b.dataset.tab; if(b.classList.contains('active')) closeDrawer(); else openDrawer(tab); }})); drawer.addEventListener('click', (e)=>{{ if(e.target===drawer) closeDrawer(); }}); importFile.addEventListener('change', ()=>{{ const f=importFile.files[0]; if(f) importJSONFromFile(f); importFile.value=''; }}); }}
-init();
-</script>
+  </div>`;
+  html+=`<div class="row note">개별삭제: 라벨 탭 • 내보내기/가져오기: 상태 백업/복원</div>`;
+  }
+  drawerContent.innerHTML=html;
+
+  $$('.wbtn').forEach(b=>{
+    const setDay=()=>{ activeLayer=b.dataset.l; state.custom=''; updateStatus(); $$('.wbtn').forEach(x=>x.classList.remove('active')); b.classList.add('active'); scheduleSave(); };
+    b.addEventListener('click', setDay, {passive:true});
+    b.addEventListener('touchend', (e)=>{ if(e.cancelable) e.preventDefault(); setDay(); }, {passive:false});
+  });
+
+  const ci=$("#colorInput"); if(ci) ci.addEventListener('input', ()=>{ state.color=ci.value; scheduleSave(); }, {passive:true});
+  const si=$("#sizeInput"); if(si) si.addEventListener('input', ()=>{ state.size=parseInt(si.value,10)||20; renderAll(); scheduleSave(); }, {passive:true});
+  const cust=$("#customInput"); if(cust) cust.addEventListener('input', ()=>{ state.custom=cust.value; scheduleSave(); }, {passive:true});
+
+  const save=$("#saveBtn"); if(save) save.addEventListener('click', savePNG, {passive:true});
+  const clr=$("#clearBtn"); if(clr) clr.addEventListener('click', clearAll, {passive:true});
+  const del=$("#btnDelMode"); if(del) { del.addEventListener('click', ()=>setDeleteMode(!deleteMode), {passive:true}); del.classList.toggle('active', deleteMode); }
+  const vr=$("#viewReset"); if(vr) vr.addEventListener('click', ()=>{ scale=1; originX=0; originY=0; setTransform(); scheduleSave(); }, {passive:true});
+
+  const exp=$("#exportBtn"); if(exp) exp.addEventListener('click', exportJSON, {passive:true});
+  const imp=$("#importBtn"); if(imp) imp.addEventListener('click', ()=>{ importFile.click(); }, {passive:true});
+}
+function closeDrawer(){ isDrawerOpen=false; drawer.classList.remove('open'); $$('.tab').forEach(t=>t.classList.remove('active')); }
+
+function init(){
+  loadNow(); setTransform(); renderAll(); updateStatus('준비완료');
+  $$('.tab').forEach(b=>b.addEventListener('click', ()=>{ const tab=b.dataset.tab; if(b.classList.contains('active')) closeDrawer(); else openDrawer(tab); }, {passive:true}));
+  drawer.addEventListener('click', (e)=>{ if(e.target===drawer) closeDrawer(); }, {passive:true});
+  importFile.addEventListener('change', ()=>{ const f=importFile.files[0]; if(f) importJSONFromFile(f); importFile.value=''; }, {passive:true});
+}
+document.addEventListener('DOMContentLoaded', init, {once:true});
+})();</script>
 </body>
 </html>
